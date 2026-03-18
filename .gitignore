@@ -1,0 +1,111 @@
+# .gitignore for ERP (C + Python)
+
+# =========================
+
+# 🔧 C / Compilation Files
+
+# =========================
+
+*.o
+*.out
+*.exe
+*.a
+*.so
+*.dll
+
+# Common build directories
+
+build/
+bin/
+dist/
+
+# =========================
+
+# 🐍 Python Files
+
+# =========================
+
+**pycache**/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+
+venv/
+env/
+.venv/
+
+# =========================
+
+# 🖥️ IDE / Editor Files
+
+# =========================
+
+.vscode/
+.idea/
+*.code-workspace
+
+# =========================
+
+# 💻 OS Files
+
+# =========================
+
+# Linux
+
+*~
+
+# macOS
+
+.DS_Store
+
+# Windows
+
+Thumbs.db
+desktop.ini
+
+# =========================
+
+# 📜 Logs / Temp Files
+
+# =========================
+
+*.log
+*.tmp
+*.swp
+
+# =========================
+
+# 🔐 Environment / Secrets
+
+# =========================
+
+.env
+.env.*
+config.local.*
+
+# =========================
+
+# ⚠️ Git / Project Specific
+
+# =========================
+
+# Ignore compiled outputs inside CODE if any
+
+CODE/**/*.o
+CODE/**/*.out
+
+# =========================
+
+# 🚫 DO NOT IGNORE THESE
+
+# =========================
+
+# (Make sure these stay tracked)
+
+!CODE/
+!main.c
+!README.md
+!CHANGElog.md
+!gitRULES.md
