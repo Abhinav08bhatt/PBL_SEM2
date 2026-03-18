@@ -2,7 +2,10 @@ import subprocess
 from datetime import datetime
 import os
 
-CHANGELOG_FILE = "CHANGElog.md"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(BASE_DIR)
+
+CHANGELOG_FILE = os.path.join("DOCS", "CHANGElog.md")
 
 TRACK_PATHS = ["CODE", "main.c"]
 VALID_EXTENSIONS = (".c", ".h", ".py", ".md", ".txt")
@@ -133,10 +136,13 @@ def append_changelog():
 ------------------------------------------------------------
 """
 
+    # ✅ Ensure git/ folder exists
+    os.makedirs(os.path.dirname(CHANGELOG_FILE), exist_ok=True)
+
     with open(CHANGELOG_FILE, "a", encoding="utf-8") as f:
         f.write(entry)
 
-    print("✅ SMART CHANGELOG UPDATED")
+    print("✅ SMART CHANGELOG UPDATED → git/CHANGElog.md")
 
 
 if __name__ == "__main__":
