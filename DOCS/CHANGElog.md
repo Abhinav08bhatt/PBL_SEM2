@@ -62,3 +62,37 @@ main.c (unchanged)
 
 
 ------------------------------------------------------------
+
+# 📌 Update: 2026-03-18 19:12:53
+
+## 🌿 Branch
+feature/taking-notes
+
+## 🧾 Last Commit
+11a3dc4 - tried basic file-function operations (Abhinav08bhatt)
+
+## 📜 Recent Commits
+11a3dc4 tried basic file-function operations
+1648fa5 Added new program structure
+3efd727 Added warning in script
+6bcfae1 Created structure
+7fcf0e4 Created structure
+
+## 📂 Git Status
+M DOCS/notes.md
+
+
+## 🔥 Changed Files (Full Content)
+
+## 🗑 Deleted Files
+
+## 📄 Unchanged Files
+CODE/c_core/README.md (unchanged)
+CODE/c_core/dataset.txt (unchanged)
+CODE/c_core/test_file.c (unchanged)
+CODE/c_core/test_header_file.c (unchanged)
+CODE/python_gui/README.md (unchanged)
+main.c (unchanged)
+
+
+------------------------------------------------------------
