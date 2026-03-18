@@ -96,27 +96,25 @@ fix/memory-leak
 
 ---
 
-# 3. Project Structure (Recommended)
+# 3. Project Structure
 
 ```
-erp-system/
+PBL-Y1-SEM2
 │
-├── c_core/
-│   ├── student.c
-│   ├── teacher.c
-│   ├── file_ops.c
-│   ├── utils.c
-│   └── erp.h
-│
-├── python_gui/
-│   ├── app.py
-│   ├── login.py
-│   ├── dashboard.py
-│   └── utils.py
-│
+├── CODE
+│   ├── c_core
+│   │   └── README.md
+│   └── python_gui
+│       └── README.md
+├── DOCS
+│   ├── CHANGElog.md
+│   ├── CHANGElog_script.py
+│   ├── gitRULES.md
+│   ├── notes.md
+│   └── README.md
+├── LICENSE
 ├── main.c
-├── README.md
-└── .gitignore
+└── README.md
 ```
 
 ---
