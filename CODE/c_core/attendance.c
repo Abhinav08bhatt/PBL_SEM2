@@ -18,4 +18,6 @@ void markAttendance(char name[], int present_num){
 
     // change 2
     printf("hi");
+
+    // made changes
 }
