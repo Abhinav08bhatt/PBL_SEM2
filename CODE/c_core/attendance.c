@@ -11,4 +11,9 @@ void markAttendance(char name[], int present_num){
     }
 
     printf("Marked attendance of the student");
+    
+
+    // change : (test)
+    printf("I am making changes");
 }
+
