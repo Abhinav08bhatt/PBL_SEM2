@@ -182,3 +182,56 @@ int main(){
     return 0;
 }
 ```
+
+
+---
+
+# CHANGELOG Snapshot
+
+- Generated: `2026-03-20 09:09:35 IST`
+- Branch: `main`
+- Scope: `CODE/**` and `main.c`
+
+## Last Commit
+1335898 - test : testing git with contributor (Abhinav08bhatt)
+
+## Recent Commits
+```text
+1335898 test : testing git with contributor
+3cb149b editing files
+f898dc8 updated changelog
+11a3dc4 tried basic file-function operations
+1648fa5 Added new program structure
+```
+
+## Git Status (Short)
+```text
+Working tree clean.
+```
+
+## Empty Files
+- `CODE/c_core/README.md`
+- `CODE/python_gui/README.md`
+
+## Deleted Files
+- None
+
+## Non-Modified Files
+- `CODE/c_core/README.md`
+- `CODE/c_core/attendance.c`
+- `CODE/c_core/attendance_data.txt`
+- `CODE/c_core/menu`
+- `CODE/c_core/menu.c`
+- `CODE/c_core/student.c`
+- `CODE/c_core/student_data.txt`
+- `CODE/python_gui/README.md`
+- `main.c`
+
+## Modified/New Files
+- None
+
+## Modified/New Files - Literal Changes (Diff)
+- None
+
+## Modified/New Files - Full Content
+- None
