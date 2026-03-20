@@ -15,5 +15,7 @@ void markAttendance(char name[], int present_num){
 
     // change : (test)
     printf("I am making changes");
-}
 
+    // change 2
+    printf("hi");
+}
