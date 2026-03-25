@@ -27,6 +27,13 @@ void showMenu(){
     printf("\n");
 }
 
+void showExit(){
+    printf("\n+=================================================================+");
+    printf("\n|                   PBL PROJECT TERMINATED                        |");
+    printf("\n+=================================================================+");   
+    printf("\n");
+}
+
 int askMenu(){
     int user_menu_input;
     
@@ -35,7 +42,8 @@ int askMenu(){
     if (scanf("%d", &user_menu_input) != 1) {
         printf("\n+=================================================================+");
         printf("\n|                  INVALID INPUT , TRY AGAIN                      |");
-        printf("\n+=================================================================+\n");
+        printf("\n+=================================================================+");
+        printf("\n");
 
         while (getchar() != '\n');
 
@@ -59,8 +67,35 @@ int main(){
 
     showMenu();
 
-    printf("%d",askMenu());
+    int user_menu_action = askMenu();
 
+    switch (user_menu_action)
+    {
+    case 0:
+        showExit();
+        return 0;
+    
+    case 1:
+        createStudent();
+        main();
+        break;
+    
+    case 2:
+        /* code */
+        break;
+    
+    case 3:
+        /* code */
+        break;
+    
+    case 4:
+        /* code */
+        break;
+    
+    default:
+        printf("\n~ ! @ # $ ^ & * ( Uh oh! A BUG ) * & ^ $ # @ ! ~ \n");
+        break;
+    }
 
     return 0;
 }
