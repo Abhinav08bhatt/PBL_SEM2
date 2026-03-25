@@ -13,6 +13,15 @@
 *.so
 *.dll
 
+# =========================
+
+# 📜 Data Files
+
+# =========================
+
+*.txt
+*.dat
+
 # Common build directories
 
 build/
