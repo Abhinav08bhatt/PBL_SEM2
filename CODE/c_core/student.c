@@ -84,7 +84,7 @@ void createStudent(){
 }
 
 
-/// @brief FUNCTION OBJECTIVE : remove a student with specific roll number
+/// @brief FUNCTION OBJECTIVE : remove a student with specific roll number : file -> student.txt
 void removeStudent(){
 
     
