@@ -1,12 +1,24 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
+/// @brief TO CLEAR TEH TERMINAL ON PURPOSE
+void clearTerminal() {
+#ifdef _WIN32
+    system("cls");   
+#else
+    system("clear"); 
+#endif
+}
+
+/// @brief Student structure : roll number | name
 struct STUDENT{
     char name[50];
     int roll_number;
 };
 
 
+/// @brief FUNCTION OBJECTIVE : write in file -> student_data.txt -> roll_num|name 
 void createStudent(){
     
     printf("\n+=================================================================+");
@@ -41,6 +53,8 @@ void createStudent(){
 
     fclose(student_data_file_pointer_to_write);
 
+    clearTerminal();
+
     printf("\n+=================================================================+");
     printf("\n|                       NEW STUDENT ADDED                         |");
     printf("\n+=================================================================+");
@@ -48,5 +62,13 @@ void createStudent(){
     printf("\n| ROLL NUMBER : %-48d |", new_student.roll_number);
     printf("\n+=================================================================+");
     printf("\n");
+
+}
+
+
+/// @brief FUNCTION OBJECTIVE : remove a student with specific roll number
+void removeStudent(){
+
+    
 
 }

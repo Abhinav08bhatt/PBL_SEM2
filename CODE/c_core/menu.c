@@ -1,8 +1,18 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "student.c"
 #include "attendance.c"
+
+void clearTerminal() {
+#ifdef _WIN32
+    system("cls");   // Windows
+#else
+    system("clear"); // Linux & macOS
+#endif
+}
+
 
 void showMenu(){
     printf("\n+=================================================================+");
@@ -40,6 +50,11 @@ int askMenu(){
     printf("\n  ->  Enter the input : ");
     
     if (scanf("%d", &user_menu_input) != 1) {
+
+        clearTerminal();
+
+        showMenu();
+
         printf("\n+=================================================================+");
         printf("\n|                  INVALID INPUT , TRY AGAIN                      |");
         printf("\n+=================================================================+");
@@ -54,6 +69,11 @@ int askMenu(){
         return user_menu_input;
     }
     else{
+
+        clearTerminal();
+
+        showMenu();
+
         printf("\n+=================================================================+");
         printf("\n|                  INVALID INPUT , TRY AGAIN                      |");
         printf("\n+=================================================================+");
