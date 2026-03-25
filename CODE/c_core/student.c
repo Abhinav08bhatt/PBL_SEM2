@@ -37,9 +37,27 @@ void createStudent(){
     FILE *student_data_file_pointer_to_read;
     student_data_file_pointer_to_read = fopen("student_data.txt","r");
     
-    // TODO : Check if the roll number is already present in database :
-    // ! if yes -> give info of given roll num and ask for input again
-    // * if no --> continue to save in file
+    if (student_data_file_pointer_to_read != NULL) {
+        struct STUDENT existing_student;
+        int duplicate_found;
+
+        do {
+            duplicate_found = 0;
+            rewind(student_data_file_pointer_to_read);
+
+            while (fscanf(student_data_file_pointer_to_read, "%d|%49[^\n]\n",
+                          &existing_student.roll_number, existing_student.name) == 2) {
+                if (existing_student.roll_number == new_student.roll_number) {
+                    duplicate_found = 1;
+                    printf("\n  ->  Roll number %d is already assigned to %s.",
+                           existing_student.roll_number, existing_student.name);
+                    printf("\n  ->  Enter a different roll number for %s : ", new_student.name);
+                    scanf("%d", &new_student.roll_number);
+                    break;
+                }
+            }
+        } while (duplicate_found);
+    }
 
     fclose(student_data_file_pointer_to_read);
 
