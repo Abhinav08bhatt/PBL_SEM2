@@ -5,3 +5,4 @@ void markAttendance(char name[], int present_num){
     
 
 }
+
