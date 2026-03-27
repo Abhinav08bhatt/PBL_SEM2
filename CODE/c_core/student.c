@@ -76,6 +76,43 @@ void viewStudent(int clear){
     getchar();
 }
 
+
+/// @brief WIP
+int searchRollNum_in_data(int roll_number){
+
+    FILE *file_pointer_rollNum_search;
+
+    int rollNumber_array[] = {};
+    int roll_num;
+    char name;
+
+    int i=0;
+    while (
+        fscanf(
+            file_pointer_rollNum_search,
+            "%d|%49[^\n]\n",
+            roll_num,
+            name
+        ) == 2
+        ){
+            printf("%d",roll_num);
+            rollNumber_array[i] = roll_num;
+            i++;
+    }
+
+    for(int j=0;j<=i;j++){
+        printf(" %d ->",rollNumber_array[j]);
+    }
+
+    for(int j=0;j<=i;j++){
+        if(rollNumber_array[j] == roll_number){
+            return 1; // 0=false 1=true
+        }
+    }
+
+    return 0; // 0=false 1=true
+}
+
 /// @brief FUNCTION OBJECTIVE : write in file -> student_data.txt -> roll_num|name 
 void createStudent(){
 
@@ -92,6 +129,8 @@ void createStudent(){
     scanf("%d",&new_student.roll_number);
 
     // TODO : Check if the roll number is already present in file or not
+
+
 
     printf("\n  ->  Enter the name of student : ");
     scanf(" %49[^\n]", new_student.name);

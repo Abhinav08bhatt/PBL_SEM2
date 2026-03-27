@@ -62,7 +62,7 @@ int askMenu(){
         return askMenu();
     }
 
-    if(user_menu_input>=0 && user_menu_input<=4){
+    if(user_menu_input>=0 && user_menu_input<=5){
         return user_menu_input;
     }
     else{
@@ -111,6 +111,16 @@ int main(){
     case 4:
         sortStudentsRollNum();
         main();
+        break;
+
+    case 5:
+        // int rn = 13;
+        // if(searchRollNum_in_data(rn)){
+        //     printf("roll num exists");
+        // }
+        // else{
+        //     printf("does not exist");
+        // }
         break;
     
     default:
