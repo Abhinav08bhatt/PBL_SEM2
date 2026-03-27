@@ -1,131 +1,70 @@
 #include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 
 #include "student.c"
 #include "attendance.c"
 
-
-void showMenu(){
-
-    clearTerminal();
+void display_main_menu() {
+    clear_terminal_screen();
 
     printf("\n+=================================================================+");
-    printf("\n|=======  Enter valid input number for respective action  ========|");
+    printf("\n|                      TEACHER ERP SYSTEM                         |");
     printf("\n+=================================================================+");
-    printf("\n|                                                                 |");
-    printf("\n+====  Student  ==================================================+");
-    printf("\n|                                                                 |");
-    printf("\n|  ( 1 )   ADD a new student                                      |");
-    printf("\n|  ( 2 )   REMOVE an old student                                  |");
-    printf("\n|  ( 3 )   View all student                                       |");
-    printf("\n|  ( 4 )   Sort student data (roll num)                           |");
-    printf("\n|                                                                 |");
-    printf("\n+====  Attendance  ===============================================+");
-    printf("\n|                                                                 |");
-    printf("\n|  ( 5 )   MARK attendance of day                                 |");
-    printf("\n|  ( 6 )   CHECK attendance details of students                   |");
-    printf("\n|                                                                 |");
-    printf("\n+====  Exit  =====================================================+");
-    printf("\n|                                                                 |");
-    printf("\n|  ( 0 )   to EXIT                                                |");
-    printf("\n|                                                                 |");
-    printf("\n+=================================================================+");
-    printf("\n");
+    printf("\n| 1. Add a new student                                            |");
+    printf("\n| 2. Remove a student                                             |");
+    printf("\n| 3. View all students                                            |");
+    printf("\n| 4. Mark attendance for a day                                    |");
+    printf("\n| 5. Search student by roll number                                |");
+    printf("\n| 6. View overall attendance summary                              |");
+    printf("\n| 0. Exit                                                         |");
+    printf("\n+=================================================================+\n");
 }
 
-void showExit(){
-    printf("\n+=================================================================+");
-    printf("\n|                   PBL PROJECT TERMINATED                        |");
-    printf("\n+=================================================================+");   
-    printf("\n\n\n");
+int read_main_menu_choice() {
+    int menu_choice;
+
+    printf("\nEnter your choice: ");
+    if (scanf("%d", &menu_choice) != 1) {
+        flush_stdin_buffer();
+        return -1;
+    }
+
+    return menu_choice;
 }
 
-int askMenu(){
-    int user_menu_input;
-    
-    printf("\n  ->  Enter the input : ");
-    
-    if (scanf("%d", &user_menu_input) != 1) {
+int main() {
+    while (1) {
+        display_main_menu();
 
-        // clearTerminal();
+        int selected_menu_choice = read_main_menu_choice();
 
-        showMenu();
-
-        printf("\n+=================================================================+");
-        printf("\n|                  INVALID INPUT , TRY AGAIN                      |");
-        printf("\n+=================================================================+");
-        printf("\n");
-
-        while (getchar() != '\n');
-
-        return askMenu();
-    }
-
-    if(user_menu_input>=0 && user_menu_input<=5){
-        return user_menu_input;
-    }
-    else{
-
-        // clearTerminal();
-
-        showMenu();
-
-        printf("\n+=================================================================+");
-        printf("\n|                  INVALID INPUT , TRY AGAIN                      |");
-        printf("\n+=================================================================+");
-        printf("\n");
-
-        return askMenu();
-    }
-}
-
-int main(){
-
-    showMenu();
-
-    int user_menu_action = askMenu();
-
-    switch (user_menu_action)
-    {
-    case 0:
-        showExit();
-        return 0;
-    
-    case 1:
-        createStudent();
-        // clearTerminal();
-        main();
-        break;
-    
-    case 2:
-        /* code */
-        break;
-    
-    case 3:
-        viewStudent(0);
-        // clearTerminal();
-        main();
-        break;
-    
-    case 4:
-        sortStudentsRollNum();
-        main();
-        break;
-
-    case 5:
-        // int rn = 13;
-        // if(searchRollNum_in_data(rn)){
-        //     printf("roll num exists");
-        // }
-        // else{
-        //     printf("does not exist");
-        // }
-        break;
-    
-    default:
-        printf("\n~ ! @ # $ ^ & * ( Uh oh! A BUG ) * & ^ $ # @ ! ~ \n");
-        break;
+        switch (selected_menu_choice) {
+            case 1:
+                add_new_student();
+                break;
+            case 2:
+                remove_student_by_roll_number();
+                break;
+            case 3:
+                display_all_students();
+                break;
+            case 4:
+                mark_attendance_for_day();
+                break;
+            case 5:
+                search_student_and_show_report();
+                break;
+            case 6:
+                display_overall_attendance_table();
+                break;
+            case 0:
+                clear_terminal_screen();
+                printf("\nTeacher ERP closed successfully.\n\n");
+                return 0;
+            default:
+                printf("\nInvalid menu choice.\n");
+                wait_for_enter_key();
+                break;
+        }
     }
 
     return 0;
