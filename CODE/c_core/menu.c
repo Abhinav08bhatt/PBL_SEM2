@@ -3,66 +3,83 @@
 #include "student.c"
 #include "attendance.c"
 
-void display_main_menu() {
-    clear_terminal_screen();
-
-    printf("\n+=================================================================+");
-    printf("\n|                      TEACHER ERP SYSTEM                         |");
-    printf("\n+=================================================================+");
-    printf("\n| 1. Add a new student                                            |");
-    printf("\n| 2. Remove a student                                             |");
-    printf("\n| 3. View all students                                            |");
-    printf("\n| 4. Mark attendance for a day                                    |");
-    printf("\n| 5. Search student by roll number                                |");
-    printf("\n| 6. View overall attendance summary                              |");
-    printf("\n| 0. Exit                                                         |");
-    printf("\n+=================================================================+\n");
+void print_main_menu_screen() {
+    printf("\n+==========================================================+\n");
+    printf("|                 STUDENT ATTENDANCE CLI                  |\n");
+    printf("+==========================================================+\n");
+    printf("| 1. Add Student                                           |\n");
+    printf("| 2. Remove Student                                        |\n");
+    printf("| 3. Show All Students                                     |\n");
+    printf("| 4. Mark Attendance                                       |\n");
+    printf("| 5. Search Student Report                                 |\n");
+    printf("| 6. Show Overall Attendance                               |\n");
+    printf("| 0. Exit                                                  |\n");
+    printf("+==========================================================+\n");
 }
 
-int read_main_menu_choice() {
-    int menu_choice;
-
-    printf("\nEnter your choice: ");
+int read_main_menu_command() {
+    int menu_choice = -1;
+    printf("| Enter command (0-6): ");
     if (scanf("%d", &menu_choice) != 1) {
-        flush_stdin_buffer();
+        clear_input_buffer();
         return -1;
     }
-
+    clear_input_buffer();
     return menu_choice;
 }
 
-int main() {
-    while (1) {
-        display_main_menu();
+void show_command_finish_message(int command_number) {
+    printf("| Command %d finished.                                      |\n", command_number);
+}
 
-        int selected_menu_choice = read_main_menu_choice();
+int main() {
+    clear_terminal_screen();
+    while (1) {
+        print_main_menu_screen();
+
+        int selected_menu_choice = read_main_menu_command();
 
         switch (selected_menu_choice) {
             case 1:
-                add_new_student();
+                add_student_screen();
+                show_command_finish_message(1);
+                clear_terminal_screen();
                 break;
             case 2:
-                remove_student_by_roll_number();
+                remove_student_screen();
+                show_command_finish_message(2);
+                clear_terminal_screen();
                 break;
             case 3:
-                display_all_students();
+                show_all_students_screen();
+                show_command_finish_message(3);
+                clear_terminal_screen();
                 break;
             case 4:
-                mark_attendance_for_day();
+                mark_attendance_screen();
+                show_command_finish_message(4);
+                clear_terminal_screen();
                 break;
             case 5:
-                search_student_and_show_report();
+                search_student_report_screen();
+                show_command_finish_message(5);
+                clear_terminal_screen();
                 break;
             case 6:
-                display_overall_attendance_table();
+                show_overall_attendance_screen();
+                show_command_finish_message(6);
+                clear_terminal_screen();
                 break;
             case 0:
-                clear_terminal_screen();
-                printf("\nTeacher ERP closed successfully.\n\n");
+                printf("\n+----------------------------------------------------------+\n");
+                printf("| Program closed successfully.                             |\n");
+                printf("+----------------------------------------------------------+\n");
                 return 0;
             default:
-                printf("\nInvalid menu choice.\n");
-                wait_for_enter_key();
+                printf("\n+----------------------------------------------------------+\n");
+                print_cli_status_message("Invalid command. Please enter only 0 to 6.");
+                printf("+----------------------------------------------------------+\n");
+                wait_for_user_and_clear_screen();
                 break;
         }
     }
