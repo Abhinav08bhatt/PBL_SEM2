@@ -1,14 +1,4 @@
-# c_core Guide (Human-Friendly Version)
-
-This guide explains the current C code in `CODE/c_core` in plain language.
-It is written for your team so everyone clearly understands:
-
-- what each file does
-- what each function does
-- who worked on what
-- what to prepare for the future Python frontend
-
----
+# c_core Guide
 
 ## Project Purpose
 
