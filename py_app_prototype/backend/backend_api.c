@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
 
 /*
  * Reuse the existing C core logic directly from CODE/c_core without editing it.
@@ -18,13 +19,85 @@ static void print_ok(const char *message) {
     printf("OK|%s\n", message);
 }
 
-static int parse_positive_int(const char *text, int *value_out) {
-    char *endptr = NULL;
-    long value = strtol(text, &endptr, 10);
-    if (endptr == text || *endptr != '\0' || value <= 0 || value > 2147483647L) {
+static int file_exists(const char *path) {
+    FILE *fp = fopen(path, "r");
+    if (fp == NULL) return 0;
+    fclose(fp);
+    return 1;
+}
+
+static int copy_file_if_target_missing(const char *source, const char *target) {
+    FILE *src;
+    FILE *dst;
+    char buffer[4096];
+    size_t bytes_read;
+
+    if (file_exists(target)) return 1;
+    if (!file_exists(source)) return 1;
+
+    src = fopen(source, "rb");
+    if (src == NULL) return 0;
+
+    dst = fopen(target, "wb");
+    if (dst == NULL) {
+        fclose(src);
         return 0;
     }
-    *value_out = (int)value;
+
+    while ((bytes_read = fread(buffer, 1, sizeof(buffer), src)) > 0) {
+        if (fwrite(buffer, 1, bytes_read, dst) != bytes_read) {
+            fclose(src);
+            fclose(dst);
+            return 0;
+        }
+    }
+
+    fclose(src);
+    fclose(dst);
+    return 1;
+}
+
+static int initialize_data_files(void) {
+    /* Priority:
+     * 1) existing local student_data.txt / attendance_data.txt
+     * 2) local aliases student.txt / attendence.txt / attendance.txt
+     * 3) seed from CODE/c_core data files
+     */
+    if (!copy_file_if_target_missing("student.txt", STUDENT_DATA_FILE)) return 0;
+    if (!copy_file_if_target_missing("attendence.txt", ATTENDANCE_DATA_FILE)) return 0;
+    if (!copy_file_if_target_missing("attendance.txt", ATTENDANCE_DATA_FILE)) return 0;
+
+    if (!copy_file_if_target_missing("../CODE/c_core/student_data.txt", STUDENT_DATA_FILE)) return 0;
+    if (!copy_file_if_target_missing("../CODE/c_core/attendance_data.txt", ATTENDANCE_DATA_FILE)) return 0;
+    if (!copy_file_if_target_missing("../../CODE/c_core/student_data.txt", STUDENT_DATA_FILE)) return 0;
+    if (!copy_file_if_target_missing("../../CODE/c_core/attendance_data.txt", ATTENDANCE_DATA_FILE)) return 0;
+    if (!copy_file_if_target_missing("CODE/c_core/student_data.txt", STUDENT_DATA_FILE)) return 0;
+    if (!copy_file_if_target_missing("CODE/c_core/attendance_data.txt", ATTENDANCE_DATA_FILE)) return 0;
+    return 1;
+}
+
+static int parse_positive_int(const char *text, int *value_out) {
+    int current_character_index = 0;
+    int text_length_value = (int)strlen(text);
+    int parsed_integer_value = 0;
+
+    if (text_length_value <= 0) {
+        return 0;
+    }
+
+    while (current_character_index < text_length_value) {
+        if (!isdigit((unsigned char)text[current_character_index])) {
+            return 0;
+        }
+        current_character_index = current_character_index + 1;
+    }
+
+    parsed_integer_value = atoi(text);
+    if (parsed_integer_value <= 0) {
+        return 0;
+    }
+
+    *value_out = parsed_integer_value;
     return 1;
 }
 
@@ -138,21 +211,44 @@ static int cmd_remove_student(int argc, char *argv[]) {
 }
 
 static int parse_status_token(const char *token, int *roll, char *status) {
-    char *colon = strchr(token, ':');
-    char roll_part[32];
-    if (colon == NULL) return 0;
+    char roll_number_string_part[32];
+    int token_index = 0;
+    int roll_text_index = 0;
+    int found_colon_symbol = 0;
 
-    size_t len = (size_t)(colon - token);
-    if (len == 0 || len >= sizeof(roll_part)) return 0;
+    while (token[token_index] != '\0') {
+        if (token[token_index] == ':') {
+            found_colon_symbol = 1;
+            break;
+        }
 
-    memcpy(roll_part, token, len);
-    roll_part[len] = '\0';
+        if (roll_text_index >= (int)sizeof(roll_number_string_part) - 1) {
+            return 0;
+        }
 
-    if (!parse_positive_int(roll_part, roll)) return 0;
+        roll_number_string_part[roll_text_index] = token[token_index];
+        roll_text_index = roll_text_index + 1;
+        token_index = token_index + 1;
+    }
 
-    if (*(colon + 1) == '\0' || *(colon + 2) != '\0') return 0;
-    *status = (char)toupper((unsigned char)*(colon + 1));
-    if (*status != 'P' && *status != 'A') return 0;
+    if (!found_colon_symbol) {
+        return 0;
+    }
+
+    roll_number_string_part[roll_text_index] = '\0';
+    if (!parse_positive_int(roll_number_string_part, roll)) {
+        return 0;
+    }
+
+    if (token[token_index + 1] == '\0' || token[token_index + 2] != '\0') {
+        return 0;
+    }
+
+    *status = (char)toupper((unsigned char)token[token_index + 1]);
+    if (*status != 'P' && *status != 'A') {
+        return 0;
+    }
+
     return 1;
 }
 
@@ -274,23 +370,27 @@ static int cmd_get_report(int argc, char *argv[]) {
 
 static int cmd_get_overall(void) {
     struct StudentRecord students[MAX_STUDENTS];
-    int count = load_students_from_file(students);
+    int total_number_of_students_loaded = load_students_from_file(students);
 
-    sort_students_by_roll_number(students, count);
-    for (int i = 0; i < count; i++) {
-        struct AttendanceSummary a = get_student_attendance_summary(students[i].roll_number);
-        double percent = 0.0;
-        if (a.classes_held > 0) {
-            percent = ((double)a.present_count * 100.0) / (double)a.classes_held;
+    sort_students_by_roll_number(students, total_number_of_students_loaded);
+    for (int student_loop_index = 0; student_loop_index < total_number_of_students_loaded; student_loop_index++) {
+        struct AttendanceSummary attendance_summary_data_for_current_student =
+            get_student_attendance_summary(students[student_loop_index].roll_number);
+        double calculated_attendance_percentage_value = 0.0;
+
+        if (attendance_summary_data_for_current_student.classes_held > 0) {
+            calculated_attendance_percentage_value =
+                ((double)attendance_summary_data_for_current_student.present_count * 100.0) /
+                (double)attendance_summary_data_for_current_student.classes_held;
         }
 
         printf("%d|%s|%d|%d|%d|%.2f\n",
-               students[i].roll_number,
-               students[i].name,
-               a.classes_held,
-               a.present_count,
-               a.absent_count,
-               percent);
+               students[student_loop_index].roll_number,
+               students[student_loop_index].name,
+               attendance_summary_data_for_current_student.classes_held,
+               attendance_summary_data_for_current_student.present_count,
+               attendance_summary_data_for_current_student.absent_count,
+               calculated_attendance_percentage_value);
     }
 
     return 0;
@@ -327,6 +427,11 @@ static int cmd_get_attendance_by_date(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
+    if (!initialize_data_files()) {
+        print_error("Could not initialize data files");
+        return 1;
+    }
+
     if (argc < 2) {
         print_error("Usage: backend_app <command> [args]");
         return 1;

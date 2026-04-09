@@ -30,6 +30,12 @@ The frontend auto-builds backend binary if missing.
 
 ## Notes
 - No files in `CODE/` are modified.
-- Data files are created in `py_app_prototype/` as:
+- Prototype seed files are included in `py_app_prototype/`:
+  - `student.txt`
+  - `attendence.txt`
+- Runtime data files are created in `py_app_prototype/` as:
   - `student_data.txt`
   - `attendance_data.txt`
+- On startup, backend seeds runtime files from:
+  - `student.txt` / `attendence.txt` (or `attendance.txt` if present)
+  - otherwise from `CODE/c_core/student_data.txt` and `CODE/c_core/attendance_data.txt`
