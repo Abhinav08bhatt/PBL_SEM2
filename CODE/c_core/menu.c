@@ -5,16 +5,16 @@
 
 void print_main_menu_screen() {
     printf("\n+==========================================================+\n");
-    printf("|                 STUDENT ATTENDANCE CLI                  |\n");
-    printf("+==========================================================+\n");
-    printf("| 1. Add Student                                           |\n");
-    printf("| 2. Remove Student                                        |\n");
-    printf("| 3. Show All Students                                     |\n");
-    printf("| 4. Mark Attendance                                       |\n");
-    printf("| 5. Search Student Report                                 |\n");
-    printf("| 6. Show Overall Attendance                               |\n");
-    printf("| 0. Exit                                                  |\n");
-    printf("+==========================================================+\n");
+    printf("|                 STUDENT ATTENDANCE CLI                     |\n");
+    printf("+============================================================+\n");
+    printf("| 1. Add Student                                             |\n");
+    printf("| 2. Remove Student                                          |\n");
+    printf("| 3. Show All Students                                       |\n");
+    printf("| 4. Mark Attendance                                         |\n");
+    printf("| 5. Search Student Report                                   |\n");
+    printf("| 6. Show Overall Attendance                                 |\n");
+    printf("| 0. Exit                                                    |\n");
+    printf("+============================================================+\n");
 }
 
 int read_main_menu_command() {

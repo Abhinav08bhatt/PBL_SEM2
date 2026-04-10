@@ -169,28 +169,6 @@ int remove_attendance_for_roll(int roll_number) {
     return 1;
 }
 
-void show_all_students_screen() {
-    struct StudentRecord students[MAX_STUDENTS];
-    int count = load_students_from_file(students);
-    int i;
-    sort_students_by_roll_number(students, count);
-
-    print_cli_section_title("ALL STUDENTS");
-    if (count == 0) {
-        print_cli_status_message("No students found.");
-        wait_for_user_enter();
-        return;
-    }
-
-    printf("| %-10s | %-41s |\n", "Roll No", "Name");
-    printf("+------------+-------------------------------------------+\n");
-    for (i = 0; i < count; i++) {
-        printf("| %-10d | %-41s |\n", students[i].roll_number, students[i].name);
-    }
-    printf("+------------+-------------------------------------------+\n");
-    wait_for_user_enter();
-}
-
 void add_student_screen() {
     struct StudentRecord students[MAX_STUDENTS];
     struct StudentRecord new_student;
@@ -266,12 +244,12 @@ void remove_student_screen() {
         wait_for_user_enter();
         return;
     }
-
+    
     for (i = index; i < count - 1; i++) {
         students[i] = students[i + 1];
     }
     count--;
-
+    
     if (!save_students_to_file(students, count)) {
         print_cli_status_message("Could not save student file.");
         wait_for_user_enter();
@@ -279,5 +257,28 @@ void remove_student_screen() {
     }
     remove_attendance_for_roll(roll);
     print_cli_status_message("Student removed successfully.");
+    wait_for_user_enter();
+}
+
+
+void show_all_students_screen() {
+    struct StudentRecord students[MAX_STUDENTS];
+    int count = load_students_from_file(students);
+    int i;
+    sort_students_by_roll_number(students, count);
+
+    print_cli_section_title("ALL STUDENTS");
+    if (count == 0) {
+        print_cli_status_message("No students found.");
+        wait_for_user_enter();
+        return;
+    }
+
+    printf("| %-10s | %-41s |\n", "Roll No", "Name");
+    printf("+------------+-------------------------------------------+\n");
+    for (i = 0; i < count; i++) {
+        printf("| %-10d | %-41s |\n", students[i].roll_number, students[i].name);
+    }
+    printf("+------------+-------------------------------------------+\n");
     wait_for_user_enter();
 }
