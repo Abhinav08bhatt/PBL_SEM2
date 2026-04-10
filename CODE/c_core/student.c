@@ -8,6 +8,7 @@
 #define MAX_STUDENTS 300
 #define MAX_NAME_LENGTH 100
 
+/* Simple structure to keep the basic student details together. */
 struct StudentRecord {
     int roll_number;
     char name[MAX_NAME_LENGTH];
@@ -23,6 +24,7 @@ void clear_terminal_screen() {
 
 void clear_input_buffer() {
     int c;
+    /* Remove leftover characters so the next input works properly. */
     while ((c = getchar()) != '\n' && c != EOF) {
     }
 }
@@ -62,6 +64,7 @@ int is_valid_date_format(const char *date_value) {
     if (strlen(date_value) != 10) return 0;
     if (date_value[4] != '-' || date_value[7] != '-') return 0;
 
+    /* Only digits are allowed apart from the two '-' positions. */
     for (i = 0; i < 10; i++) {
         if (i == 4 || i == 7) continue;
         if (!isdigit((unsigned char)date_value[i])) return 0;
@@ -80,6 +83,7 @@ int is_blank_string(const char *text) {
 
 void sort_students_by_roll_number(struct StudentRecord students[], int student_count) {
     int i, j;
+    /* Bubble sort is enough here because the list is small. */
     for (i = 0; i < student_count - 1; i++) {
         for (j = 0; j < student_count - i - 1; j++) {
             if (students[j].roll_number > students[j + 1].roll_number) {
@@ -108,6 +112,7 @@ int load_students_from_file(struct StudentRecord students[]) {
     int count = 0;
     if (fp == NULL) return 0;
 
+    /* Read one line at a time and keep only valid student records. */
     while (fgets(line, sizeof(line), fp) != NULL && count < MAX_STUDENTS) {
         struct StudentRecord s;
         if (parse_student_line(line, &s)) {
@@ -145,6 +150,7 @@ int remove_attendance_for_roll(int roll_number) {
     char line[300];
     if (input == NULL) return 1;
 
+    /* Write all records except the removed student's records into a temp file. */
     temp = fopen("attendance_tmp.txt", "w");
     if (temp == NULL) {
         fclose(input);
@@ -165,6 +171,7 @@ int remove_attendance_for_roll(int roll_number) {
     fclose(input);
     fclose(temp);
     remove(ATTENDANCE_DATA_FILE);
+    /* Replace the old attendance file with the cleaned one. */
     if (rename("attendance_tmp.txt", ATTENDANCE_DATA_FILE) != 0) return 0;
     return 1;
 }
@@ -244,12 +251,13 @@ void remove_student_screen() {
         wait_for_user_enter();
         return;
     }
-    
+
+    /* Shift remaining students one position left after removal. */
     for (i = index; i < count - 1; i++) {
         students[i] = students[i + 1];
     }
     count--;
-    
+
     if (!save_students_to_file(students, count)) {
         print_cli_status_message("Could not save student file.");
         wait_for_user_enter();
@@ -265,6 +273,7 @@ void show_all_students_screen() {
     struct StudentRecord students[MAX_STUDENTS];
     int count = load_students_from_file(students);
     int i;
+
     sort_students_by_roll_number(students, count);
 
     print_cli_section_title("ALL STUDENTS");

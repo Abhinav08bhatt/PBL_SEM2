@@ -2,6 +2,7 @@
 #include <string.h>
 #include <ctype.h>
 
+/* Used for report screens so we do not return multiple values separately. */
 struct AttendanceSummary {
     int classes_held;
     int present_count;
@@ -22,6 +23,7 @@ int date_already_has_attendance(const char *target_date) {
     char line[300];
     if (fp == NULL) return 0;
 
+    /* If any record already uses this date, attendance was marked before. */
     while (fgets(line, sizeof(line), fp) != NULL) {
         char d[11];
         int r;
@@ -43,6 +45,7 @@ int rewrite_attendance_file_without_date(const char *target_date) {
     char line[300];
     if (input == NULL) return 1;
 
+    /* Rebuild the file while skipping the selected date. */
     temp = fopen("attendance_tmp.txt", "w");
     if (temp == NULL) {
         fclose(input);
@@ -122,6 +125,7 @@ void mark_attendance_screen() {
 
     for (i = 0; i < count; i++) {
         char s;
+        /* Keep asking until a valid attendance status is entered. */
         while (1) {
             printf("| Roll %d (%s) -> P/A: ", students[i].roll_number, students[i].name);
             scanf(" %c", &s);
@@ -148,6 +152,7 @@ struct AttendanceSummary get_student_attendance_summary(int roll_number) {
 
     if (fp == NULL) return result;
 
+    /* Count only the rows that belong to the requested student. */
     while (fgets(line, sizeof(line), fp) != NULL) {
         char d[11];
         int r;
@@ -232,6 +237,7 @@ void show_overall_attendance_screen() {
     for (i = 0; i < count; i++) {
         struct AttendanceSummary a = get_student_attendance_summary(students[i].roll_number);
         double percent = 0.0;
+
         if (a.classes_held > 0) {
             percent = ((double)a.present_count * 100.0) / (double)a.classes_held;
         }

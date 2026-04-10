@@ -3,6 +3,7 @@
 #include "student.c"
 #include "attendance.c"
 
+/* Main menu shown every time control comes back to the home screen. */
 void print_main_menu_screen() {
     printf("\n+==========================================================+\n");
     printf("|                 STUDENT ATTENDANCE CLI                     |\n");
@@ -34,6 +35,7 @@ void show_command_finish_message(int command_number) {
 
 int main() {
     clear_terminal_screen();
+
     while (1) {
         print_main_menu_screen();
 
