@@ -1,7 +1,7 @@
 #include <stdio.h>
 
-#include "student.c"
-#include "attendance.c"
+#include "student.h"
+#include "attendance.h"
 
 /* Main menu shown every time control comes back to the home screen. */
 void print_main_menu_screen() {

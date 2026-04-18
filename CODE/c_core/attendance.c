@@ -2,12 +2,7 @@
 #include <string.h>
 #include <ctype.h>
 
-/* Used for report screens so we do not return multiple values separately. */
-struct AttendanceSummary {
-    int classes_held;
-    int present_count;
-    int absent_count;
-};
+#include "attendance.h"
 
 int parse_attendance_record_line(const char *line, char *date, int *roll, char *status) {
     if (sscanf(line, "%10[^|]|%d|%c", date, roll, status) != 3) return 0;
@@ -70,7 +65,7 @@ int rewrite_attendance_file_without_date(const char *target_date) {
     return 1;
 }
 
-void mark_attendance_screen() {
+void mark_attendance_screen(void) {
     struct StudentRecord students[MAX_STUDENTS];
     int count = load_students_from_file(students);
     char date[11];
@@ -170,7 +165,7 @@ struct AttendanceSummary get_student_attendance_summary(int roll_number) {
     return result;
 }
 
-void search_student_report_screen() {
+void search_student_report_screen(void) {
     struct StudentRecord students[MAX_STUDENTS];
     int count = load_students_from_file(students);
     int roll;
@@ -217,7 +212,7 @@ void search_student_report_screen() {
     wait_for_user_enter();
 }
 
-void show_overall_attendance_screen() {
+void show_overall_attendance_screen(void) {
     struct StudentRecord students[MAX_STUDENTS];
     int count = load_students_from_file(students);
     int i;

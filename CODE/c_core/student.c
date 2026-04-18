@@ -3,18 +3,9 @@
 #include <string.h>
 #include <ctype.h>
 
-#define STUDENT_DATA_FILE "student_data.txt"
-#define ATTENDANCE_DATA_FILE "attendance_data.txt"
-#define MAX_STUDENTS 300
-#define MAX_NAME_LENGTH 100
+#include "student.h"
 
-/* Simple structure to keep the basic student details together. */
-struct StudentRecord {
-    int roll_number;
-    char name[MAX_NAME_LENGTH];
-};
-
-void clear_terminal_screen() {
+void clear_terminal_screen(void) {
 #ifdef _WIN32
     system("cls");
 #else
@@ -22,14 +13,14 @@ void clear_terminal_screen() {
 #endif
 }
 
-void clear_input_buffer() {
+void clear_input_buffer(void) {
     int c;
     /* Remove leftover characters so the next input works properly. */
     while ((c = getchar()) != '\n' && c != EOF) {
     }
 }
 
-void wait_for_user_enter() {
+void wait_for_user_enter(void) {
     printf("\n| Press ENTER to continue...");
     fflush(stdout);
     clear_input_buffer();
@@ -54,7 +45,7 @@ void print_cli_status_message(const char *message_text) {
     printf("| %-56s |\n", message_text);
 }
 
-void wait_for_user_and_clear_screen() {
+void wait_for_user_and_clear_screen(void) {
     wait_for_user_enter();
     clear_terminal_screen();
 }
@@ -176,7 +167,7 @@ int remove_attendance_for_roll(int roll_number) {
     return 1;
 }
 
-void add_student_screen() {
+void add_student_screen(void) {
     struct StudentRecord students[MAX_STUDENTS];
     struct StudentRecord new_student;
     int count = load_students_from_file(students);
@@ -223,7 +214,7 @@ void add_student_screen() {
     wait_for_user_enter();
 }
 
-void remove_student_screen() {
+void remove_student_screen(void) {
     struct StudentRecord students[MAX_STUDENTS];
     int count = load_students_from_file(students);
     int roll;
@@ -269,7 +260,7 @@ void remove_student_screen() {
 }
 
 
-void show_all_students_screen() {
+void show_all_students_screen(void) {
     struct StudentRecord students[MAX_STUDENTS];
     int count = load_students_from_file(students);
     int i;
