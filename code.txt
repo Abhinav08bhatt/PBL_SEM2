@@ -1,0 +1,2401 @@
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+
+#include "attendance.h"
+
+int parse_attendance_record_line(const char *line, char *date, int *roll, char *status) {
+    if (sscanf(line, "%10[^|]|%d|%c", date, roll, status) != 3) return 0;
+    *status = (char)toupper((unsigned char)*status);
+    if (*roll <= 0) return 0;
+    if (*status != 'P' && *status != 'A') return 0;
+    if (!is_valid_date_format(date)) return 0;
+    return 1;
+}
+
+int date_already_has_attendance(const char *target_date) {
+    FILE *fp = fopen(ATTENDANCE_DATA_FILE, "r");
+    char line[300];
+    if (fp == NULL) return 0;
+
+    /* If any record already uses this date, attendance was marked before. */
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        char d[11];
+        int r;
+        char s;
+        if (parse_attendance_record_line(line, d, &r, &s)) {
+            if (strcmp(d, target_date) == 0) {
+                fclose(fp);
+                return 1;
+            }
+        }
+    }
+    fclose(fp);
+    return 0;
+}
+
+int rewrite_attendance_file_without_date(const char *target_date) {
+    FILE *input = fopen(ATTENDANCE_DATA_FILE, "r");
+    FILE *temp;
+    char line[300];
+    if (input == NULL) return 1;
+
+    /* Rebuild the file while skipping the selected date. */
+    temp = fopen("attendance_tmp.txt", "w");
+    if (temp == NULL) {
+        fclose(input);
+        return 0;
+    }
+
+    while (fgets(line, sizeof(line), input) != NULL) {
+        char d[11];
+        int r;
+        char s;
+        if (parse_attendance_record_line(line, d, &r, &s)) {
+            if (strcmp(d, target_date) != 0) {
+                fprintf(temp, "%s|%d|%c\n", d, r, s);
+            }
+        }
+    }
+
+    fclose(input);
+    fclose(temp);
+    remove(ATTENDANCE_DATA_FILE);
+    if (rename("attendance_tmp.txt", ATTENDANCE_DATA_FILE) != 0) return 0;
+    return 1;
+}
+
+void mark_attendance_screen(void) {
+    struct StudentRecord students[MAX_STUDENTS];
+    int count = load_students_from_file(students);
+    char date[11];
+    int i;
+
+    print_cli_section_title("MARK ATTENDANCE");
+    if (count == 0) {
+        print_cli_status_message("No students found.");
+        wait_for_user_enter();
+        return;
+    }
+
+    sort_students_by_roll_number(students, count);
+    clear_input_buffer();
+    printf("| Enter date (YYYY-MM-DD): ");
+    read_line_input(date, sizeof(date));
+    if (!is_valid_date_format(date)) {
+        print_cli_status_message("Invalid date format.");
+        wait_for_user_enter();
+        return;
+    }
+
+    if (date_already_has_attendance(date)) {
+        char ch;
+        printf("| Date already exists. Overwrite? (Y/N): ");
+        scanf(" %c", &ch);
+        ch = (char)toupper((unsigned char)ch);
+        if (ch != 'Y') {
+            clear_input_buffer();
+            print_cli_status_message("Attendance update cancelled.");
+            wait_for_user_enter();
+            return;
+        }
+        clear_input_buffer();
+        if (!rewrite_attendance_file_without_date(date)) {
+            print_cli_status_message("Could not rewrite attendance.");
+            wait_for_user_enter();
+            return;
+        }
+    }
+
+    FILE *fp = fopen(ATTENDANCE_DATA_FILE, "a");
+    if (fp == NULL) {
+        print_cli_status_message("Could not open attendance file.");
+        wait_for_user_enter();
+        return;
+    }
+
+    printf("+----------------------------------------------------------+\n");
+    printf("| Enter P for Present and A for Absent                    |\n");
+    printf("+----------------------------------------------------------+\n");
+
+    for (i = 0; i < count; i++) {
+        char s;
+        /* Keep asking until a valid attendance status is entered. */
+        while (1) {
+            printf("| Roll %d (%s) -> P/A: ", students[i].roll_number, students[i].name);
+            scanf(" %c", &s);
+            s = (char)toupper((unsigned char)s);
+            if (s == 'P' || s == 'A') break;
+            printf("| Only P or A allowed.\n");
+        }
+        clear_input_buffer();
+        fprintf(fp, "%s|%d|%c\n", date, students[i].roll_number, s);
+    }
+
+    fclose(fp);
+    print_cli_status_message("Attendance saved successfully.");
+    wait_for_user_enter();
+}
+
+struct AttendanceSummary get_student_attendance_summary(int roll_number) {
+    struct AttendanceSummary result;
+    FILE *fp = fopen(ATTENDANCE_DATA_FILE, "r");
+    char line[300];
+    result.classes_held = 0;
+    result.present_count = 0;
+    result.absent_count = 0;
+
+    if (fp == NULL) return result;
+
+    /* Count only the rows that belong to the requested student. */
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        char d[11];
+        int r;
+        char s;
+        if (parse_attendance_record_line(line, d, &r, &s)) {
+            if (r == roll_number) {
+                result.classes_held++;
+                if (s == 'P') result.present_count++;
+                else result.absent_count++;
+            }
+        }
+    }
+
+    fclose(fp);
+    return result;
+}
+
+void search_student_report_screen(void) {
+    struct StudentRecord students[MAX_STUDENTS];
+    int count = load_students_from_file(students);
+    int roll;
+    int index;
+    struct AttendanceSummary a;
+    double percent = 0.0;
+
+    print_cli_section_title("SEARCH STUDENT REPORT");
+    if (count == 0) {
+        print_cli_status_message("No students available.");
+        wait_for_user_enter();
+        return;
+    }
+
+    printf("| Enter roll number: ");
+    if (scanf("%d", &roll) != 1 || roll <= 0) {
+        clear_input_buffer();
+        print_cli_status_message("Invalid roll number.");
+        wait_for_user_enter();
+        return;
+    }
+    clear_input_buffer();
+
+    index = find_student_index_by_roll(students, count, roll);
+    if (index == -1) {
+        print_cli_status_message("Student not found.");
+        wait_for_user_enter();
+        return;
+    }
+
+    a = get_student_attendance_summary(roll);
+    if (a.classes_held > 0) {
+        percent = ((double)a.present_count * 100.0) / (double)a.classes_held;
+    }
+
+    printf("+----------------------------------------------------------+\n");
+    printf("| Roll Number : %-42d |\n", students[index].roll_number);
+    printf("| Name        : %-42s |\n", students[index].name);
+    printf("| Classes     : %-42d |\n", a.classes_held);
+    printf("| Present     : %-42d |\n", a.present_count);
+    printf("| Absent      : %-42d |\n", a.absent_count);
+    printf("| Attendance  : %-41.2f%% |\n", percent);
+    printf("+----------------------------------------------------------+\n");
+    wait_for_user_enter();
+}
+
+void show_overall_attendance_screen(void) {
+    struct StudentRecord students[MAX_STUDENTS];
+    int count = load_students_from_file(students);
+    int i;
+
+    print_cli_section_title("OVERALL ATTENDANCE");
+    if (count == 0) {
+        print_cli_status_message("No students available.");
+        wait_for_user_enter();
+        return;
+    }
+
+    sort_students_by_roll_number(students, count);
+    printf("+--------------------------------------------------------------------------------+\n");
+    printf("| %-8s | %-20s | %-7s | %-7s | %-7s | %-10s |\n", "Roll", "Name", "Classes", "Present", "Absent", "Percent");
+    printf("+--------------------------------------------------------------------------------+\n");
+
+    for (i = 0; i < count; i++) {
+        struct AttendanceSummary a = get_student_attendance_summary(students[i].roll_number);
+        double percent = 0.0;
+
+        if (a.classes_held > 0) {
+            percent = ((double)a.present_count * 100.0) / (double)a.classes_held;
+        }
+        printf("| %-8d | %-20s | %-7d | %-7d | %-7d | %-9.2f%% |\n",
+               students[i].roll_number,
+               students[i].name,
+               a.classes_held,
+               a.present_count,
+               a.absent_count,
+               percent);
+    }
+    printf("+--------------------------------------------------------------------------------+\n");
+    wait_for_user_enter();
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+#include "student.h"
+
+void clear_terminal_screen(void) {
+#ifdef _WIN32
+    system("cls");
+#else
+    system("clear");
+#endif
+}
+
+void clear_input_buffer(void) {
+    int c;
+    /* Remove leftover characters so the next input works properly. */
+    while ((c = getchar()) != '\n' && c != EOF) {
+    }
+}
+
+void wait_for_user_enter(void) {
+    printf("\n| Press ENTER to continue...");
+    fflush(stdout);
+    clear_input_buffer();
+    printf("\n");
+}
+
+void read_line_input(char *destination, int size) {
+    if (fgets(destination, size, stdin) == NULL) {
+        destination[0] = '\0';
+        return;
+    }
+    destination[strcspn(destination, "\n")] = '\0';
+}
+
+void print_cli_section_title(const char *title_text) {
+    printf("\n+==========================================================+\n");
+    printf("| %-56s |\n", title_text);
+    printf("+==========================================================+\n");
+}
+
+void print_cli_status_message(const char *message_text) {
+    printf("| %-56s |\n", message_text);
+}
+
+void wait_for_user_and_clear_screen(void) {
+    wait_for_user_enter();
+    clear_terminal_screen();
+}
+
+int is_valid_date_format(const char *date_value) {
+    int i;
+    if (strlen(date_value) != 10) return 0;
+    if (date_value[4] != '-' || date_value[7] != '-') return 0;
+
+    /* Only digits are allowed apart from the two '-' positions. */
+    for (i = 0; i < 10; i++) {
+        if (i == 4 || i == 7) continue;
+        if (!isdigit((unsigned char)date_value[i])) return 0;
+    }
+    return 1;
+}
+
+int is_blank_string(const char *text) {
+    int i = 0;
+    while (text[i] != '\0') {
+        if (!isspace((unsigned char)text[i])) return 0;
+        i++;
+    }
+    return 1;
+}
+
+void sort_students_by_roll_number(struct StudentRecord students[], int student_count) {
+    int i, j;
+    /* Bubble sort is enough here because the list is small. */
+    for (i = 0; i < student_count - 1; i++) {
+        for (j = 0; j < student_count - i - 1; j++) {
+            if (students[j].roll_number > students[j + 1].roll_number) {
+                struct StudentRecord temp = students[j];
+                students[j] = students[j + 1];
+                students[j + 1] = temp;
+            }
+        }
+    }
+}
+
+int parse_student_line(const char *line, struct StudentRecord *student) {
+    int roll;
+    char name[MAX_NAME_LENGTH];
+    if (sscanf(line, "%d|%99[^\n]", &roll, name) != 2) return 0;
+    if (roll <= 0) return 0;
+    if (is_blank_string(name)) return 0;
+    student->roll_number = roll;
+    strcpy(student->name, name);
+    return 1;
+}
+
+int load_students_from_file(struct StudentRecord students[]) {
+    FILE *fp = fopen(STUDENT_DATA_FILE, "r");
+    char line[300];
+    int count = 0;
+    if (fp == NULL) return 0;
+
+    /* Read one line at a time and keep only valid student records. */
+    while (fgets(line, sizeof(line), fp) != NULL && count < MAX_STUDENTS) {
+        struct StudentRecord s;
+        if (parse_student_line(line, &s)) {
+            students[count] = s;
+            count++;
+        }
+    }
+    fclose(fp);
+    return count;
+}
+
+int save_students_to_file(struct StudentRecord students[], int student_count) {
+    FILE *fp = fopen(STUDENT_DATA_FILE, "w");
+    int i;
+    if (fp == NULL) return 0;
+
+    for (i = 0; i < student_count; i++) {
+        fprintf(fp, "%d|%s\n", students[i].roll_number, students[i].name);
+    }
+    fclose(fp);
+    return 1;
+}
+
+int find_student_index_by_roll(struct StudentRecord students[], int student_count, int roll_number) {
+    int i;
+    for (i = 0; i < student_count; i++) {
+        if (students[i].roll_number == roll_number) return i;
+    }
+    return -1;
+}
+
+int remove_attendance_for_roll(int roll_number) {
+    FILE *input = fopen(ATTENDANCE_DATA_FILE, "r");
+    FILE *temp;
+    char line[300];
+    if (input == NULL) return 1;
+
+    /* Write all records except the removed student's records into a temp file. */
+    temp = fopen("attendance_tmp.txt", "w");
+    if (temp == NULL) {
+        fclose(input);
+        return 0;
+    }
+
+    while (fgets(line, sizeof(line), input) != NULL) {
+        char date[20];
+        int roll;
+        char status;
+        if (sscanf(line, "%19[^|]|%d|%c", date, &roll, &status) == 3) {
+            if (roll != roll_number) {
+                fprintf(temp, "%s|%d|%c\n", date, roll, status);
+            }
+        }
+    }
+
+    fclose(input);
+    fclose(temp);
+    remove(ATTENDANCE_DATA_FILE);
+    /* Replace the old attendance file with the cleaned one. */
+    if (rename("attendance_tmp.txt", ATTENDANCE_DATA_FILE) != 0) return 0;
+    return 1;
+}
+
+void add_student_screen(void) {
+    struct StudentRecord students[MAX_STUDENTS];
+    struct StudentRecord new_student;
+    int count = load_students_from_file(students);
+
+    print_cli_section_title("ADD STUDENT");
+    if (count >= MAX_STUDENTS) {
+        print_cli_status_message("Cannot add more students.");
+        wait_for_user_enter();
+        return;
+    }
+
+    printf("| Enter roll number: ");
+    if (scanf("%d", &new_student.roll_number) != 1 || new_student.roll_number <= 0) {
+        clear_input_buffer();
+        print_cli_status_message("Invalid roll number.");
+        wait_for_user_enter();
+        return;
+    }
+    clear_input_buffer();
+
+    if (find_student_index_by_roll(students, count, new_student.roll_number) != -1) {
+        print_cli_status_message("Roll number already exists.");
+        wait_for_user_enter();
+        return;
+    }
+
+    printf("| Enter name: ");
+    read_line_input(new_student.name, MAX_NAME_LENGTH);
+    if (strlen(new_student.name) == 0 || is_blank_string(new_student.name)) {
+        print_cli_status_message("Name is empty.");
+        wait_for_user_enter();
+        return;
+    }
+
+    students[count] = new_student;
+    count++;
+    sort_students_by_roll_number(students, count);
+    if (!save_students_to_file(students, count)) {
+        print_cli_status_message("Could not save file.");
+        wait_for_user_enter();
+        return;
+    }
+    print_cli_status_message("Student added successfully.");
+    wait_for_user_enter();
+}
+
+void remove_student_screen(void) {
+    struct StudentRecord students[MAX_STUDENTS];
+    int count = load_students_from_file(students);
+    int roll;
+    int i, index;
+
+    print_cli_section_title("REMOVE STUDENT");
+    if (count == 0) {
+        print_cli_status_message("No students to remove.");
+        wait_for_user_enter();
+        return;
+    }
+
+    printf("| Enter roll number: ");
+    if (scanf("%d", &roll) != 1 || roll <= 0) {
+        clear_input_buffer();
+        print_cli_status_message("Invalid roll number.");
+        wait_for_user_enter();
+        return;
+    }
+    clear_input_buffer();
+
+    index = find_student_index_by_roll(students, count, roll);
+    if (index == -1) {
+        print_cli_status_message("Student not found.");
+        wait_for_user_enter();
+        return;
+    }
+
+    /* Shift remaining students one position left after removal. */
+    for (i = index; i < count - 1; i++) {
+        students[i] = students[i + 1];
+    }
+    count--;
+
+    if (!save_students_to_file(students, count)) {
+        print_cli_status_message("Could not save student file.");
+        wait_for_user_enter();
+        return;
+    }
+    remove_attendance_for_roll(roll);
+    print_cli_status_message("Student removed successfully.");
+    wait_for_user_enter();
+}
+
+
+void show_all_students_screen(void) {
+    struct StudentRecord students[MAX_STUDENTS];
+    int count = load_students_from_file(students);
+    int i;
+
+    sort_students_by_roll_number(students, count);
+
+    print_cli_section_title("ALL STUDENTS");
+    if (count == 0) {
+        print_cli_status_message("No students found.");
+        wait_for_user_enter();
+        return;
+    }
+
+    printf("| %-10s | %-41s |\n", "Roll No", "Name");
+    printf("+------------+-------------------------------------------+\n");
+    for (i = 0; i < count; i++) {
+        printf("| %-10d | %-41s |\n", students[i].roll_number, students[i].name);
+    }
+    printf("+------------+-------------------------------------------+\n");
+    wait_for_user_enter();
+}
+#ifndef STUDENT_H
+#define STUDENT_H
+
+/* File names and common limits used in the project. */
+#define STUDENT_DATA_FILE "student_data.txt"
+#define ATTENDANCE_DATA_FILE "attendance_data.txt"
+#define MAX_STUDENTS 300
+#define MAX_NAME_LENGTH 100
+
+/* Basic structure for one student. */
+struct StudentRecord {
+    int roll_number;
+    char name[MAX_NAME_LENGTH];
+};
+
+/* Small helper functions used in many places. */
+void clear_terminal_screen(void);
+void clear_input_buffer(void);
+void wait_for_user_enter(void);
+void read_line_input(char *destination, int size);
+void print_cli_section_title(const char *title_text);
+void print_cli_status_message(const char *message_text);
+void wait_for_user_and_clear_screen(void);
+int is_valid_date_format(const char *date_value);
+int is_blank_string(const char *text);
+void sort_students_by_roll_number(struct StudentRecord students[], int student_count);
+int parse_student_line(const char *line, struct StudentRecord *student);
+int load_students_from_file(struct StudentRecord students[]);
+int save_students_to_file(struct StudentRecord students[], int student_count);
+int find_student_index_by_roll(struct StudentRecord students[], int student_count, int roll_number);
+int remove_attendance_for_roll(int roll_number);
+
+/* Screen functions for the CLI version. */
+void add_student_screen(void);
+void remove_student_screen(void);
+void show_all_students_screen(void);
+
+#endif#ifndef ATTENDANCE_H
+#define ATTENDANCE_H
+
+#include "student.h"
+
+/* Used to store attendance totals for one student. */
+struct AttendanceSummary {
+    int classes_held;
+    int present_count;
+    int absent_count;
+};
+
+/* Attendance functions and report functions. */
+int parse_attendance_record_line(const char *line, char *date, int *roll, char *status);
+int date_already_has_attendance(const char *target_date);
+int rewrite_attendance_file_without_date(const char *target_date);
+void mark_attendance_screen(void);
+struct AttendanceSummary get_student_attendance_summary(int roll_number);
+void search_student_report_screen(void);
+void show_overall_attendance_screen(void);
+
+#endifimport os
+import subprocess
+import tkinter as tk
+from datetime import date
+from tkinter import messagebox
+from tkinter import ttk
+
+# Folder paths used by the GUI and backend.
+python_gui_folder_path = os.path.abspath(os.path.dirname(__file__))
+c_core_folder_path = os.path.abspath(os.path.join(python_gui_folder_path, "..", "c_core"))
+backend_binary_full_path = os.path.join(python_gui_folder_path, "backend_app")
+
+
+def build_backend_if_needed():
+    if os.path.exists(backend_binary_full_path):
+        return
+
+    # Build the small C backend if it is not already built.
+    compile_command = [
+        "gcc",
+        "-std=c99",
+        "-Wall",
+        "-Wextra",
+        os.path.join(python_gui_folder_path, "backend_api.c"),
+        os.path.join(c_core_folder_path, "student.c"),
+        os.path.join(c_core_folder_path, "attendance.c"),
+        "-o",
+        backend_binary_full_path,
+    ]
+
+    compile_result = subprocess.run(
+        compile_command,
+        capture_output=True,
+        text=True,
+        cwd=python_gui_folder_path,
+    )
+
+    if compile_result.returncode != 0:
+        error_message = compile_result.stderr.strip()
+        if error_message == "":
+            error_message = "Failed to compile backend"
+        raise RuntimeError(error_message)
+
+
+def run_backend_command(*command_arguments):
+    build_backend_if_needed()
+
+    run_result = subprocess.run(
+        [backend_binary_full_path, *command_arguments],
+        capture_output=True,
+        text=True,
+        cwd=c_core_folder_path,
+    )
+
+    output_text = run_result.stdout.strip()
+
+    if run_result.returncode != 0:
+        if output_text.startswith("ERR|"):
+            raise RuntimeError(output_text.split("|", 1)[1])
+
+        error_message = run_result.stderr.strip()
+        if error_message == "":
+            if output_text != "":
+                error_message = output_text
+            else:
+                error_message = "Backend command failed"
+
+        raise RuntimeError(error_message)
+
+    return output_text
+
+
+class AttendanceApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+
+        self.title("Student Attendance GUI")
+        self.geometry("980x680")
+
+        # Keep the current student list in memory for the form and tables.
+        self.student_rows = []
+        self.status_box_by_roll_number = {}
+
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.students_tab = ttk.Frame(self.notebook)
+        self.attendance_tab = ttk.Frame(self.notebook)
+        self.reports_tab = ttk.Frame(self.notebook)
+
+        self.notebook.add(self.students_tab, text="Students")
+        self.notebook.add(self.attendance_tab, text="Attendance")
+        self.notebook.add(self.reports_tab, text="Reports")
+
+        self.create_students_tab()
+        self.create_attendance_tab()
+        self.create_reports_tab()
+
+        self.refresh_students_table()
+        self.refresh_overall_report_table()
+
+    def create_students_tab(self):
+        top_form_frame = ttk.Frame(self.students_tab)
+        top_form_frame.pack(fill="x", padx=10, pady=10)
+
+        ttk.Label(top_form_frame, text="Roll:").grid(row=0, column=0, sticky="w")
+        self.roll_number_entry = ttk.Entry(top_form_frame, width=15)
+        self.roll_number_entry.grid(row=0, column=1, padx=6)
+
+        ttk.Label(top_form_frame, text="Name:").grid(row=0, column=2, sticky="w")
+        self.student_name_entry = ttk.Entry(top_form_frame, width=40)
+        self.student_name_entry.grid(row=0, column=3, padx=6)
+
+        ttk.Button(top_form_frame, text="Add", command=self.add_student).grid(row=0, column=4, padx=6)
+        ttk.Button(top_form_frame, text="Remove by Roll", command=self.remove_student).grid(row=0, column=5, padx=6)
+        ttk.Button(top_form_frame, text="Refresh", command=self.refresh_students_table).grid(row=0, column=6, padx=6)
+
+        self.students_table = ttk.Treeview(
+            self.students_tab,
+            columns=("roll", "name"),
+            show="headings",
+            height=20,
+        )
+        self.students_table.heading("roll", text="Roll")
+        self.students_table.heading("name", text="Name")
+        self.students_table.column("roll", width=140, anchor="center")
+        self.students_table.column("name", width=700)
+        self.students_table.pack(fill="both", expand=True, padx=10, pady=10)
+
+    def create_attendance_tab(self):
+        top_input_frame = ttk.Frame(self.attendance_tab)
+        top_input_frame.pack(fill="x", padx=10, pady=10)
+
+        ttk.Label(top_input_frame, text="Date (YYYY-MM-DD):").pack(side="left")
+        self.attendance_date_entry = ttk.Entry(top_input_frame, width=15)
+        self.attendance_date_entry.insert(0, date.today().isoformat())
+        self.attendance_date_entry.pack(side="left", padx=8)
+
+        ttk.Button(top_input_frame, text="Load Students", command=self.build_attendance_form).pack(side="left", padx=6)
+        ttk.Button(top_input_frame, text="Submit Attendance", command=self.submit_attendance).pack(side="left", padx=6)
+
+        self.attendance_canvas = tk.Canvas(self.attendance_tab)
+        self.attendance_canvas.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+
+        self.attendance_scrollbar = ttk.Scrollbar(
+            self.attendance_tab,
+            orient="vertical",
+            command=self.attendance_canvas.yview,
+        )
+        self.attendance_scrollbar.pack(side="right", fill="y")
+        self.attendance_canvas.configure(yscrollcommand=self.attendance_scrollbar.set)
+
+        self.attendance_rows_frame = ttk.Frame(self.attendance_canvas)
+        self.attendance_canvas.create_window((0, 0), window=self.attendance_rows_frame, anchor="nw")
+
+        # Update the canvas scroll area when the form size changes.
+        self.attendance_rows_frame.bind(
+            "<Configure>",
+            lambda event: self.attendance_canvas.configure(
+                scrollregion=self.attendance_canvas.bbox("all")
+            ),
+        )
+
+    def create_reports_tab(self):
+        top_controls_frame = ttk.Frame(self.reports_tab)
+        top_controls_frame.pack(fill="x", padx=10, pady=10)
+
+        ttk.Label(top_controls_frame, text="Roll:").pack(side="left")
+        self.report_roll_number_entry = ttk.Entry(top_controls_frame, width=15)
+        self.report_roll_number_entry.pack(side="left", padx=8)
+
+        ttk.Button(top_controls_frame, text="Get Student Report", command=self.get_student_report).pack(side="left", padx=6)
+        ttk.Button(top_controls_frame, text="Refresh Overall", command=self.refresh_overall_report_table).pack(side="left", padx=6)
+
+        self.single_student_report_text = tk.Text(self.reports_tab, height=6)
+        self.single_student_report_text.pack(fill="x", padx=10, pady=(0, 10))
+
+        self.overall_report_table = ttk.Treeview(
+            self.reports_tab,
+            columns=("roll", "name", "classes", "present", "absent", "percent"),
+            show="headings",
+            height=16,
+        )
+        self.overall_report_table.heading("roll", text="Roll")
+        self.overall_report_table.heading("name", text="Name")
+        self.overall_report_table.heading("classes", text="Classes")
+        self.overall_report_table.heading("present", text="Present")
+        self.overall_report_table.heading("absent", text="Absent")
+        self.overall_report_table.heading("percent", text="Percent")
+
+        self.overall_report_table.column("roll", width=90, anchor="center")
+        self.overall_report_table.column("name", width=260)
+        self.overall_report_table.column("classes", width=90, anchor="center")
+        self.overall_report_table.column("present", width=90, anchor="center")
+        self.overall_report_table.column("absent", width=90, anchor="center")
+        self.overall_report_table.column("percent", width=90, anchor="center")
+        self.overall_report_table.pack(fill="both", expand=True, padx=10, pady=10)
+
+    def refresh_students_table(self):
+        try:
+            backend_output_text = run_backend_command("list_students")
+        except Exception as error_object:
+            messagebox.showerror("Backend Error", str(error_object))
+            return
+
+        self.student_rows = []
+
+        for each_line_text in backend_output_text.splitlines():
+            split_parts = each_line_text.split("|", 1)
+            if len(split_parts) == 2:
+                self.student_rows.append((split_parts[0], split_parts[1]))
+
+        for each_old_row in self.students_table.get_children():
+            self.students_table.delete(each_old_row)
+
+        for each_student_row in self.student_rows:
+            self.students_table.insert("", "end", values=each_student_row)
+
+        self.build_attendance_form()
+
+    def add_student(self):
+        input_roll_number_text = self.roll_number_entry.get().strip()
+        input_student_name_text = self.student_name_entry.get().strip()
+
+        if input_roll_number_text == "" or input_student_name_text == "":
+            messagebox.showwarning("Input", "Roll and name are required")
+            return
+
+        try:
+            run_backend_command("add_student", input_roll_number_text, input_student_name_text)
+        except Exception as error_object:
+            messagebox.showerror("Add Failed", str(error_object))
+            return
+
+        self.roll_number_entry.delete(0, tk.END)
+        self.student_name_entry.delete(0, tk.END)
+        self.refresh_students_table()
+        self.refresh_overall_report_table()
+
+    def remove_student(self):
+        input_roll_number_text = self.roll_number_entry.get().strip()
+
+        if input_roll_number_text == "":
+            messagebox.showwarning("Input", "Enter roll in the roll field")
+            return
+
+        try:
+            run_backend_command("remove_student", input_roll_number_text)
+        except Exception as error_object:
+            messagebox.showerror("Remove Failed", str(error_object))
+            return
+
+        self.roll_number_entry.delete(0, tk.END)
+        self.refresh_students_table()
+        self.refresh_overall_report_table()
+
+    def build_attendance_form(self):
+        for each_widget in self.attendance_rows_frame.winfo_children():
+            each_widget.destroy()
+
+        self.status_box_by_roll_number = {}
+
+        if len(self.student_rows) == 0:
+            ttk.Label(self.attendance_rows_frame, text="No students found.").grid(row=0, column=0, sticky="w")
+            return
+
+        ttk.Label(self.attendance_rows_frame, text="Roll", width=12).grid(row=0, column=0, padx=8, pady=4)
+        ttk.Label(self.attendance_rows_frame, text="Name", width=40).grid(row=0, column=1, padx=8, pady=4)
+        ttk.Label(self.attendance_rows_frame, text="Status", width=10).grid(row=0, column=2, padx=8, pady=4)
+
+        current_row_number = 1
+
+        for each_roll_number_text, each_student_name_text in self.student_rows:
+            ttk.Label(self.attendance_rows_frame, text=each_roll_number_text, width=12).grid(
+                row=current_row_number,
+                column=0,
+                padx=8,
+                pady=3,
+            )
+
+            ttk.Label(self.attendance_rows_frame, text=each_student_name_text, width=40).grid(
+                row=current_row_number,
+                column=1,
+                padx=8,
+                pady=3,
+                sticky="w",
+            )
+
+            current_status_box = ttk.Combobox(
+                self.attendance_rows_frame,
+                values=["P", "A"],
+                width=8,
+                state="readonly",
+            )
+            current_status_box.set("P")
+            current_status_box.grid(row=current_row_number, column=2, padx=8, pady=3)
+
+            self.status_box_by_roll_number[each_roll_number_text] = current_status_box
+            current_row_number = current_row_number + 1
+
+    def submit_attendance(self):
+        input_date_text = self.attendance_date_entry.get().strip()
+
+        if input_date_text == "":
+            messagebox.showwarning("Input", "Date is required")
+            return
+
+        if len(self.student_rows) == 0:
+            messagebox.showwarning("Input", "No students to mark")
+            return
+
+        backend_command_argument_list = ["mark_attendance", input_date_text]
+
+        for each_roll_number_text, _unused_name in self.student_rows:
+            current_status_box = self.status_box_by_roll_number.get(each_roll_number_text)
+
+            if current_status_box is None:
+                messagebox.showwarning("Input", f"Missing status widget for roll {each_roll_number_text}")
+                return
+
+            current_status_text = current_status_box.get().strip().upper()
+
+            if current_status_text != "P" and current_status_text != "A":
+                messagebox.showwarning("Input", f"Invalid status for roll {each_roll_number_text}")
+                return
+
+            backend_command_argument_list.append(f"{each_roll_number_text}:{current_status_text}")
+
+        try:
+            run_backend_command(*backend_command_argument_list)
+        except Exception as error_object:
+            messagebox.showerror("Attendance Failed", str(error_object))
+            return
+
+        messagebox.showinfo("Success", "Attendance saved")
+        self.refresh_overall_report_table()
+
+    def get_student_report(self):
+        input_roll_number_text = self.report_roll_number_entry.get().strip()
+
+        if input_roll_number_text == "":
+            messagebox.showwarning("Input", "Roll is required")
+            return
+
+        try:
+            backend_output_text = run_backend_command("get_report", input_roll_number_text)
+        except Exception as error_object:
+            messagebox.showerror("Report Failed", str(error_object))
+            return
+
+        report_parts = backend_output_text.split("|")
+
+        if len(report_parts) != 6:
+            messagebox.showerror("Report Failed", "Unexpected backend format")
+            return
+
+        readable_report_text = ""
+        readable_report_text = readable_report_text + f"Roll: {report_parts[0]}\n"
+        readable_report_text = readable_report_text + f"Name: {report_parts[1]}\n"
+        readable_report_text = readable_report_text + f"Classes: {report_parts[2]}\n"
+        readable_report_text = readable_report_text + f"Present: {report_parts[3]}\n"
+        readable_report_text = readable_report_text + f"Absent: {report_parts[4]}\n"
+        readable_report_text = readable_report_text + f"Attendance: {report_parts[5]}%\n"
+
+        self.single_student_report_text.delete("1.0", tk.END)
+        self.single_student_report_text.insert(tk.END, readable_report_text)
+
+    def refresh_overall_report_table(self):
+        try:
+            backend_output_text = run_backend_command("get_overall")
+        except Exception as error_object:
+            messagebox.showerror("Overall Failed", str(error_object))
+            return
+
+        for each_old_row in self.overall_report_table.get_children():
+            self.overall_report_table.delete(each_old_row)
+
+        for each_line_text in backend_output_text.splitlines():
+            split_parts = each_line_text.split("|")
+            if len(split_parts) == 6:
+                self.overall_report_table.insert("", "end", values=split_parts)
+
+
+if __name__ == "__main__":
+    try:
+        build_backend_if_needed()
+    except Exception as error_object:
+        hidden_window = tk.Tk()
+        hidden_window.withdraw()
+        messagebox.showerror("Startup Error", str(error_object))
+        raise SystemExit(1)
+
+    main_window = AttendanceApp()
+    main_window.mainloop()
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(void) {
+    int command_result;
+
+    /* Run the Python GUI from the main C file. */
+    command_result = system("python3 CODE/python_gui/app.py");
+
+    if (command_result != 0) {
+        printf("Could not start the app.\n");
+        return 1;
+    }
+
+    return 0;
+}#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+
+#include "attendance.h"
+
+int parse_attendance_record_line(const char *line, char *date, int *roll, char *status) {
+    if (sscanf(line, "%10[^|]|%d|%c", date, roll, status) != 3) return 0;
+    *status = (char)toupper((unsigned char)*status);
+    if (*roll <= 0) return 0;
+    if (*status != 'P' && *status != 'A') return 0;
+    if (!is_valid_date_format(date)) return 0;
+    return 1;
+}
+
+int date_already_has_attendance(const char *target_date) {
+    FILE *fp = fopen(ATTENDANCE_DATA_FILE, "r");
+    char line[300];
+    if (fp == NULL) return 0;
+
+    /* If any record already uses this date, attendance was marked before. */
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        char d[11];
+        int r;
+        char s;
+        if (parse_attendance_record_line(line, d, &r, &s)) {
+            if (strcmp(d, target_date) == 0) {
+                fclose(fp);
+                return 1;
+            }
+        }
+    }
+    fclose(fp);
+    return 0;
+}
+
+int rewrite_attendance_file_without_date(const char *target_date) {
+    FILE *input = fopen(ATTENDANCE_DATA_FILE, "r");
+    FILE *temp;
+    char line[300];
+    if (input == NULL) return 1;
+
+    /* Rebuild the file while skipping the selected date. */
+    temp = fopen("attendance_tmp.txt", "w");
+    if (temp == NULL) {
+        fclose(input);
+        return 0;
+    }
+
+    while (fgets(line, sizeof(line), input) != NULL) {
+        char d[11];
+        int r;
+        char s;
+        if (parse_attendance_record_line(line, d, &r, &s)) {
+            if (strcmp(d, target_date) != 0) {
+                fprintf(temp, "%s|%d|%c\n", d, r, s);
+            }
+        }
+    }
+
+    fclose(input);
+    fclose(temp);
+    remove(ATTENDANCE_DATA_FILE);
+    if (rename("attendance_tmp.txt", ATTENDANCE_DATA_FILE) != 0) return 0;
+    return 1;
+}
+
+void mark_attendance_screen(void) {
+    struct StudentRecord students[MAX_STUDENTS];
+    int count = load_students_from_file(students);
+    char date[11];
+    int i;
+
+    print_cli_section_title("MARK ATTENDANCE");
+    if (count == 0) {
+        print_cli_status_message("No students found.");
+        wait_for_user_enter();
+        return;
+    }
+
+    sort_students_by_roll_number(students, count);
+    clear_input_buffer();
+    printf("| Enter date (YYYY-MM-DD): ");
+    read_line_input(date, sizeof(date));
+    if (!is_valid_date_format(date)) {
+        print_cli_status_message("Invalid date format.");
+        wait_for_user_enter();
+        return;
+    }
+
+    if (date_already_has_attendance(date)) {
+        char ch;
+        printf("| Date already exists. Overwrite? (Y/N): ");
+        scanf(" %c", &ch);
+        ch = (char)toupper((unsigned char)ch);
+        if (ch != 'Y') {
+            clear_input_buffer();
+            print_cli_status_message("Attendance update cancelled.");
+            wait_for_user_enter();
+            return;
+        }
+        clear_input_buffer();
+        if (!rewrite_attendance_file_without_date(date)) {
+            print_cli_status_message("Could not rewrite attendance.");
+            wait_for_user_enter();
+            return;
+        }
+    }
+
+    FILE *fp = fopen(ATTENDANCE_DATA_FILE, "a");
+    if (fp == NULL) {
+        print_cli_status_message("Could not open attendance file.");
+        wait_for_user_enter();
+        return;
+    }
+
+    printf("+----------------------------------------------------------+\n");
+    printf("| Enter P for Present and A for Absent                    |\n");
+    printf("+----------------------------------------------------------+\n");
+
+    for (i = 0; i < count; i++) {
+        char s;
+        /* Keep asking until a valid attendance status is entered. */
+        while (1) {
+            printf("| Roll %d (%s) -> P/A: ", students[i].roll_number, students[i].name);
+            scanf(" %c", &s);
+            s = (char)toupper((unsigned char)s);
+            if (s == 'P' || s == 'A') break;
+            printf("| Only P or A allowed.\n");
+        }
+        clear_input_buffer();
+        fprintf(fp, "%s|%d|%c\n", date, students[i].roll_number, s);
+    }
+
+    fclose(fp);
+    print_cli_status_message("Attendance saved successfully.");
+    wait_for_user_enter();
+}
+
+struct AttendanceSummary get_student_attendance_summary(int roll_number) {
+    struct AttendanceSummary result;
+    FILE *fp = fopen(ATTENDANCE_DATA_FILE, "r");
+    char line[300];
+    result.classes_held = 0;
+    result.present_count = 0;
+    result.absent_count = 0;
+
+    if (fp == NULL) return result;
+
+    /* Count only the rows that belong to the requested student. */
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        char d[11];
+        int r;
+        char s;
+        if (parse_attendance_record_line(line, d, &r, &s)) {
+            if (r == roll_number) {
+                result.classes_held++;
+                if (s == 'P') result.present_count++;
+                else result.absent_count++;
+            }
+        }
+    }
+
+    fclose(fp);
+    return result;
+}
+
+void search_student_report_screen(void) {
+    struct StudentRecord students[MAX_STUDENTS];
+    int count = load_students_from_file(students);
+    int roll;
+    int index;
+    struct AttendanceSummary a;
+    double percent = 0.0;
+
+    print_cli_section_title("SEARCH STUDENT REPORT");
+    if (count == 0) {
+        print_cli_status_message("No students available.");
+        wait_for_user_enter();
+        return;
+    }
+
+    printf("| Enter roll number: ");
+    if (scanf("%d", &roll) != 1 || roll <= 0) {
+        clear_input_buffer();
+        print_cli_status_message("Invalid roll number.");
+        wait_for_user_enter();
+        return;
+    }
+    clear_input_buffer();
+
+    index = find_student_index_by_roll(students, count, roll);
+    if (index == -1) {
+        print_cli_status_message("Student not found.");
+        wait_for_user_enter();
+        return;
+    }
+
+    a = get_student_attendance_summary(roll);
+    if (a.classes_held > 0) {
+        percent = ((double)a.present_count * 100.0) / (double)a.classes_held;
+    }
+
+    printf("+----------------------------------------------------------+\n");
+    printf("| Roll Number : %-42d |\n", students[index].roll_number);
+    printf("| Name        : %-42s |\n", students[index].name);
+    printf("| Classes     : %-42d |\n", a.classes_held);
+    printf("| Present     : %-42d |\n", a.present_count);
+    printf("| Absent      : %-42d |\n", a.absent_count);
+    printf("| Attendance  : %-41.2f%% |\n", percent);
+    printf("+----------------------------------------------------------+\n");
+    wait_for_user_enter();
+}
+
+void show_overall_attendance_screen(void) {
+    struct StudentRecord students[MAX_STUDENTS];
+    int count = load_students_from_file(students);
+    int i;
+
+    print_cli_section_title("OVERALL ATTENDANCE");
+    if (count == 0) {
+        print_cli_status_message("No students available.");
+        wait_for_user_enter();
+        return;
+    }
+
+    sort_students_by_roll_number(students, count);
+    printf("+--------------------------------------------------------------------------------+\n");
+    printf("| %-8s | %-20s | %-7s | %-7s | %-7s | %-10s |\n", "Roll", "Name", "Classes", "Present", "Absent", "Percent");
+    printf("+--------------------------------------------------------------------------------+\n");
+
+    for (i = 0; i < count; i++) {
+        struct AttendanceSummary a = get_student_attendance_summary(students[i].roll_number);
+        double percent = 0.0;
+
+        if (a.classes_held > 0) {
+            percent = ((double)a.present_count * 100.0) / (double)a.classes_held;
+        }
+        printf("| %-8d | %-20s | %-7d | %-7d | %-7d | %-9.2f%% |\n",
+               students[i].roll_number,
+               students[i].name,
+               a.classes_held,
+               a.present_count,
+               a.absent_count,
+               percent);
+    }
+    printf("+--------------------------------------------------------------------------------+\n");
+    wait_for_user_enter();
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+#include "student.h"
+
+void clear_terminal_screen(void) {
+#ifdef _WIN32
+    system("cls");
+#else
+    system("clear");
+#endif
+}
+
+void clear_input_buffer(void) {
+    int c;
+    /* Remove leftover characters so the next input works properly. */
+    while ((c = getchar()) != '\n' && c != EOF) {
+    }
+}
+
+void wait_for_user_enter(void) {
+    printf("\n| Press ENTER to continue...");
+    fflush(stdout);
+    clear_input_buffer();
+    printf("\n");
+}
+
+void read_line_input(char *destination, int size) {
+    if (fgets(destination, size, stdin) == NULL) {
+        destination[0] = '\0';
+        return;
+    }
+    destination[strcspn(destination, "\n")] = '\0';
+}
+
+void print_cli_section_title(const char *title_text) {
+    printf("\n+==========================================================+\n");
+    printf("| %-56s |\n", title_text);
+    printf("+==========================================================+\n");
+}
+
+void print_cli_status_message(const char *message_text) {
+    printf("| %-56s |\n", message_text);
+}
+
+void wait_for_user_and_clear_screen(void) {
+    wait_for_user_enter();
+    clear_terminal_screen();
+}
+
+int is_valid_date_format(const char *date_value) {
+    int i;
+    if (strlen(date_value) != 10) return 0;
+    if (date_value[4] != '-' || date_value[7] != '-') return 0;
+
+    /* Only digits are allowed apart from the two '-' positions. */
+    for (i = 0; i < 10; i++) {
+        if (i == 4 || i == 7) continue;
+        if (!isdigit((unsigned char)date_value[i])) return 0;
+    }
+    return 1;
+}
+
+int is_blank_string(const char *text) {
+    int i = 0;
+    while (text[i] != '\0') {
+        if (!isspace((unsigned char)text[i])) return 0;
+        i++;
+    }
+    return 1;
+}
+
+void sort_students_by_roll_number(struct StudentRecord students[], int student_count) {
+    int i, j;
+    /* Bubble sort is enough here because the list is small. */
+    for (i = 0; i < student_count - 1; i++) {
+        for (j = 0; j < student_count - i - 1; j++) {
+            if (students[j].roll_number > students[j + 1].roll_number) {
+                struct StudentRecord temp = students[j];
+                students[j] = students[j + 1];
+                students[j + 1] = temp;
+            }
+        }
+    }
+}
+
+int parse_student_line(const char *line, struct StudentRecord *student) {
+    int roll;
+    char name[MAX_NAME_LENGTH];
+    if (sscanf(line, "%d|%99[^\n]", &roll, name) != 2) return 0;
+    if (roll <= 0) return 0;
+    if (is_blank_string(name)) return 0;
+    student->roll_number = roll;
+    strcpy(student->name, name);
+    return 1;
+}
+
+int load_students_from_file(struct StudentRecord students[]) {
+    FILE *fp = fopen(STUDENT_DATA_FILE, "r");
+    char line[300];
+    int count = 0;
+    if (fp == NULL) return 0;
+
+    /* Read one line at a time and keep only valid student records. */
+    while (fgets(line, sizeof(line), fp) != NULL && count < MAX_STUDENTS) {
+        struct StudentRecord s;
+        if (parse_student_line(line, &s)) {
+            students[count] = s;
+            count++;
+        }
+    }
+    fclose(fp);
+    return count;
+}
+
+int save_students_to_file(struct StudentRecord students[], int student_count) {
+    FILE *fp = fopen(STUDENT_DATA_FILE, "w");
+    int i;
+    if (fp == NULL) return 0;
+
+    for (i = 0; i < student_count; i++) {
+        fprintf(fp, "%d|%s\n", students[i].roll_number, students[i].name);
+    }
+    fclose(fp);
+    return 1;
+}
+
+int find_student_index_by_roll(struct StudentRecord students[], int student_count, int roll_number) {
+    int i;
+    for (i = 0; i < student_count; i++) {
+        if (students[i].roll_number == roll_number) return i;
+    }
+    return -1;
+}
+
+int remove_attendance_for_roll(int roll_number) {
+    FILE *input = fopen(ATTENDANCE_DATA_FILE, "r");
+    FILE *temp;
+    char line[300];
+    if (input == NULL) return 1;
+
+    /* Write all records except the removed student's records into a temp file. */
+    temp = fopen("attendance_tmp.txt", "w");
+    if (temp == NULL) {
+        fclose(input);
+        return 0;
+    }
+
+    while (fgets(line, sizeof(line), input) != NULL) {
+        char date[20];
+        int roll;
+        char status;
+        if (sscanf(line, "%19[^|]|%d|%c", date, &roll, &status) == 3) {
+            if (roll != roll_number) {
+                fprintf(temp, "%s|%d|%c\n", date, roll, status);
+            }
+        }
+    }
+
+    fclose(input);
+    fclose(temp);
+    remove(ATTENDANCE_DATA_FILE);
+    /* Replace the old attendance file with the cleaned one. */
+    if (rename("attendance_tmp.txt", ATTENDANCE_DATA_FILE) != 0) return 0;
+    return 1;
+}
+
+void add_student_screen(void) {
+    struct StudentRecord students[MAX_STUDENTS];
+    struct StudentRecord new_student;
+    int count = load_students_from_file(students);
+
+    print_cli_section_title("ADD STUDENT");
+    if (count >= MAX_STUDENTS) {
+        print_cli_status_message("Cannot add more students.");
+        wait_for_user_enter();
+        return;
+    }
+
+    printf("| Enter roll number: ");
+    if (scanf("%d", &new_student.roll_number) != 1 || new_student.roll_number <= 0) {
+        clear_input_buffer();
+        print_cli_status_message("Invalid roll number.");
+        wait_for_user_enter();
+        return;
+    }
+    clear_input_buffer();
+
+    if (find_student_index_by_roll(students, count, new_student.roll_number) != -1) {
+        print_cli_status_message("Roll number already exists.");
+        wait_for_user_enter();
+        return;
+    }
+
+    printf("| Enter name: ");
+    read_line_input(new_student.name, MAX_NAME_LENGTH);
+    if (strlen(new_student.name) == 0 || is_blank_string(new_student.name)) {
+        print_cli_status_message("Name is empty.");
+        wait_for_user_enter();
+        return;
+    }
+
+    students[count] = new_student;
+    count++;
+    sort_students_by_roll_number(students, count);
+    if (!save_students_to_file(students, count)) {
+        print_cli_status_message("Could not save file.");
+        wait_for_user_enter();
+        return;
+    }
+    print_cli_status_message("Student added successfully.");
+    wait_for_user_enter();
+}
+
+void remove_student_screen(void) {
+    struct StudentRecord students[MAX_STUDENTS];
+    int count = load_students_from_file(students);
+    int roll;
+    int i, index;
+
+    print_cli_section_title("REMOVE STUDENT");
+    if (count == 0) {
+        print_cli_status_message("No students to remove.");
+        wait_for_user_enter();
+        return;
+    }
+
+    printf("| Enter roll number: ");
+    if (scanf("%d", &roll) != 1 || roll <= 0) {
+        clear_input_buffer();
+        print_cli_status_message("Invalid roll number.");
+        wait_for_user_enter();
+        return;
+    }
+    clear_input_buffer();
+
+    index = find_student_index_by_roll(students, count, roll);
+    if (index == -1) {
+        print_cli_status_message("Student not found.");
+        wait_for_user_enter();
+        return;
+    }
+
+    /* Shift remaining students one position left after removal. */
+    for (i = index; i < count - 1; i++) {
+        students[i] = students[i + 1];
+    }
+    count--;
+
+    if (!save_students_to_file(students, count)) {
+        print_cli_status_message("Could not save student file.");
+        wait_for_user_enter();
+        return;
+    }
+    remove_attendance_for_roll(roll);
+    print_cli_status_message("Student removed successfully.");
+    wait_for_user_enter();
+}
+
+
+void show_all_students_screen(void) {
+    struct StudentRecord students[MAX_STUDENTS];
+    int count = load_students_from_file(students);
+    int i;
+
+    sort_students_by_roll_number(students, count);
+
+    print_cli_section_title("ALL STUDENTS");
+    if (count == 0) {
+        print_cli_status_message("No students found.");
+        wait_for_user_enter();
+        return;
+    }
+
+    printf("| %-10s | %-41s |\n", "Roll No", "Name");
+    printf("+------------+-------------------------------------------+\n");
+    for (i = 0; i < count; i++) {
+        printf("| %-10d | %-41s |\n", students[i].roll_number, students[i].name);
+    }
+    printf("+------------+-------------------------------------------+\n");
+    wait_for_user_enter();
+}
+#ifndef STUDENT_H
+#define STUDENT_H
+
+/* File names and common limits used in the project. */
+#define STUDENT_DATA_FILE "student_data.txt"
+#define ATTENDANCE_DATA_FILE "attendance_data.txt"
+#define MAX_STUDENTS 300
+#define MAX_NAME_LENGTH 100
+
+/* Basic structure for one student. */
+struct StudentRecord {
+    int roll_number;
+    char name[MAX_NAME_LENGTH];
+};
+
+/* Small helper functions used in many places. */
+void clear_terminal_screen(void);
+void clear_input_buffer(void);
+void wait_for_user_enter(void);
+void read_line_input(char *destination, int size);
+void print_cli_section_title(const char *title_text);
+void print_cli_status_message(const char *message_text);
+void wait_for_user_and_clear_screen(void);
+int is_valid_date_format(const char *date_value);
+int is_blank_string(const char *text);
+void sort_students_by_roll_number(struct StudentRecord students[], int student_count);
+int parse_student_line(const char *line, struct StudentRecord *student);
+int load_students_from_file(struct StudentRecord students[]);
+int save_students_to_file(struct StudentRecord students[], int student_count);
+int find_student_index_by_roll(struct StudentRecord students[], int student_count, int roll_number);
+int remove_attendance_for_roll(int roll_number);
+
+/* Screen functions for the CLI version. */
+void add_student_screen(void);
+void remove_student_screen(void);
+void show_all_students_screen(void);
+
+#endif#ifndef ATTENDANCE_H
+#define ATTENDANCE_H
+
+#include "student.h"
+
+/* Used to store attendance totals for one student. */
+struct AttendanceSummary {
+    int classes_held;
+    int present_count;
+    int absent_count;
+};
+
+/* Attendance functions and report functions. */
+int parse_attendance_record_line(const char *line, char *date, int *roll, char *status);
+int date_already_has_attendance(const char *target_date);
+int rewrite_attendance_file_without_date(const char *target_date);
+void mark_attendance_screen(void);
+struct AttendanceSummary get_student_attendance_summary(int roll_number);
+void search_student_report_screen(void);
+void show_overall_attendance_screen(void);
+
+#endifimport os
+import subprocess
+import tkinter as tk
+from datetime import date
+from tkinter import messagebox
+from tkinter import ttk
+
+# Folder paths used by the GUI and backend.
+python_gui_folder_path = os.path.abspath(os.path.dirname(__file__))
+c_core_folder_path = os.path.abspath(os.path.join(python_gui_folder_path, "..", "c_core"))
+backend_binary_full_path = os.path.join(python_gui_folder_path, "backend_app")
+
+
+def build_backend_if_needed():
+    if os.path.exists(backend_binary_full_path):
+        return
+
+    # Build the small C backend if it is not already built.
+    compile_command = [
+        "gcc",
+        "-std=c99",
+        "-Wall",
+        "-Wextra",
+        os.path.join(python_gui_folder_path, "backend_api.c"),
+        os.path.join(c_core_folder_path, "student.c"),
+        os.path.join(c_core_folder_path, "attendance.c"),
+        "-o",
+        backend_binary_full_path,
+    ]
+
+    compile_result = subprocess.run(
+        compile_command,
+        capture_output=True,
+        text=True,
+        cwd=python_gui_folder_path,
+    )
+
+    if compile_result.returncode != 0:
+        error_message = compile_result.stderr.strip()
+        if error_message == "":
+            error_message = "Failed to compile backend"
+        raise RuntimeError(error_message)
+
+
+def run_backend_command(*command_arguments):
+    build_backend_if_needed()
+
+    run_result = subprocess.run(
+        [backend_binary_full_path, *command_arguments],
+        capture_output=True,
+        text=True,
+        cwd=c_core_folder_path,
+    )
+
+    output_text = run_result.stdout.strip()
+
+    if run_result.returncode != 0:
+        if output_text.startswith("ERR|"):
+            raise RuntimeError(output_text.split("|", 1)[1])
+
+        error_message = run_result.stderr.strip()
+        if error_message == "":
+            if output_text != "":
+                error_message = output_text
+            else:
+                error_message = "Backend command failed"
+
+        raise RuntimeError(error_message)
+
+    return output_text
+
+
+class AttendanceApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+
+        self.title("Student Attendance GUI")
+        self.geometry("980x680")
+
+        # Keep the current student list in memory for the form and tables.
+        self.student_rows = []
+        self.status_box_by_roll_number = {}
+
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.students_tab = ttk.Frame(self.notebook)
+        self.attendance_tab = ttk.Frame(self.notebook)
+        self.reports_tab = ttk.Frame(self.notebook)
+
+        self.notebook.add(self.students_tab, text="Students")
+        self.notebook.add(self.attendance_tab, text="Attendance")
+        self.notebook.add(self.reports_tab, text="Reports")
+
+        self.create_students_tab()
+        self.create_attendance_tab()
+        self.create_reports_tab()
+
+        self.refresh_students_table()
+        self.refresh_overall_report_table()
+
+    def create_students_tab(self):
+        top_form_frame = ttk.Frame(self.students_tab)
+        top_form_frame.pack(fill="x", padx=10, pady=10)
+
+        ttk.Label(top_form_frame, text="Roll:").grid(row=0, column=0, sticky="w")
+        self.roll_number_entry = ttk.Entry(top_form_frame, width=15)
+        self.roll_number_entry.grid(row=0, column=1, padx=6)
+
+        ttk.Label(top_form_frame, text="Name:").grid(row=0, column=2, sticky="w")
+        self.student_name_entry = ttk.Entry(top_form_frame, width=40)
+        self.student_name_entry.grid(row=0, column=3, padx=6)
+
+        ttk.Button(top_form_frame, text="Add", command=self.add_student).grid(row=0, column=4, padx=6)
+        ttk.Button(top_form_frame, text="Remove by Roll", command=self.remove_student).grid(row=0, column=5, padx=6)
+        ttk.Button(top_form_frame, text="Refresh", command=self.refresh_students_table).grid(row=0, column=6, padx=6)
+
+        self.students_table = ttk.Treeview(
+            self.students_tab,
+            columns=("roll", "name"),
+            show="headings",
+            height=20,
+        )
+        self.students_table.heading("roll", text="Roll")
+        self.students_table.heading("name", text="Name")
+        self.students_table.column("roll", width=140, anchor="center")
+        self.students_table.column("name", width=700)
+        self.students_table.pack(fill="both", expand=True, padx=10, pady=10)
+
+    def create_attendance_tab(self):
+        top_input_frame = ttk.Frame(self.attendance_tab)
+        top_input_frame.pack(fill="x", padx=10, pady=10)
+
+        ttk.Label(top_input_frame, text="Date (YYYY-MM-DD):").pack(side="left")
+        self.attendance_date_entry = ttk.Entry(top_input_frame, width=15)
+        self.attendance_date_entry.insert(0, date.today().isoformat())
+        self.attendance_date_entry.pack(side="left", padx=8)
+
+        ttk.Button(top_input_frame, text="Load Students", command=self.build_attendance_form).pack(side="left", padx=6)
+        ttk.Button(top_input_frame, text="Submit Attendance", command=self.submit_attendance).pack(side="left", padx=6)
+
+        self.attendance_canvas = tk.Canvas(self.attendance_tab)
+        self.attendance_canvas.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+
+        self.attendance_scrollbar = ttk.Scrollbar(
+            self.attendance_tab,
+            orient="vertical",
+            command=self.attendance_canvas.yview,
+        )
+        self.attendance_scrollbar.pack(side="right", fill="y")
+        self.attendance_canvas.configure(yscrollcommand=self.attendance_scrollbar.set)
+
+        self.attendance_rows_frame = ttk.Frame(self.attendance_canvas)
+        self.attendance_canvas.create_window((0, 0), window=self.attendance_rows_frame, anchor="nw")
+
+        # Update the canvas scroll area when the form size changes.
+        self.attendance_rows_frame.bind(
+            "<Configure>",
+            lambda event: self.attendance_canvas.configure(
+                scrollregion=self.attendance_canvas.bbox("all")
+            ),
+        )
+
+    def create_reports_tab(self):
+        top_controls_frame = ttk.Frame(self.reports_tab)
+        top_controls_frame.pack(fill="x", padx=10, pady=10)
+
+        ttk.Label(top_controls_frame, text="Roll:").pack(side="left")
+        self.report_roll_number_entry = ttk.Entry(top_controls_frame, width=15)
+        self.report_roll_number_entry.pack(side="left", padx=8)
+
+        ttk.Button(top_controls_frame, text="Get Student Report", command=self.get_student_report).pack(side="left", padx=6)
+        ttk.Button(top_controls_frame, text="Refresh Overall", command=self.refresh_overall_report_table).pack(side="left", padx=6)
+
+        self.single_student_report_text = tk.Text(self.reports_tab, height=6)
+        self.single_student_report_text.pack(fill="x", padx=10, pady=(0, 10))
+
+        self.overall_report_table = ttk.Treeview(
+            self.reports_tab,
+            columns=("roll", "name", "classes", "present", "absent", "percent"),
+            show="headings",
+            height=16,
+        )
+        self.overall_report_table.heading("roll", text="Roll")
+        self.overall_report_table.heading("name", text="Name")
+        self.overall_report_table.heading("classes", text="Classes")
+        self.overall_report_table.heading("present", text="Present")
+        self.overall_report_table.heading("absent", text="Absent")
+        self.overall_report_table.heading("percent", text="Percent")
+
+        self.overall_report_table.column("roll", width=90, anchor="center")
+        self.overall_report_table.column("name", width=260)
+        self.overall_report_table.column("classes", width=90, anchor="center")
+        self.overall_report_table.column("present", width=90, anchor="center")
+        self.overall_report_table.column("absent", width=90, anchor="center")
+        self.overall_report_table.column("percent", width=90, anchor="center")
+        self.overall_report_table.pack(fill="both", expand=True, padx=10, pady=10)
+
+    def refresh_students_table(self):
+        try:
+            backend_output_text = run_backend_command("list_students")
+        except Exception as error_object:
+            messagebox.showerror("Backend Error", str(error_object))
+            return
+
+        self.student_rows = []
+
+        for each_line_text in backend_output_text.splitlines():
+            split_parts = each_line_text.split("|", 1)
+            if len(split_parts) == 2:
+                self.student_rows.append((split_parts[0], split_parts[1]))
+
+        for each_old_row in self.students_table.get_children():
+            self.students_table.delete(each_old_row)
+
+        for each_student_row in self.student_rows:
+            self.students_table.insert("", "end", values=each_student_row)
+
+        self.build_attendance_form()
+
+    def add_student(self):
+        input_roll_number_text = self.roll_number_entry.get().strip()
+        input_student_name_text = self.student_name_entry.get().strip()
+
+        if input_roll_number_text == "" or input_student_name_text == "":
+            messagebox.showwarning("Input", "Roll and name are required")
+            return
+
+        try:
+            run_backend_command("add_student", input_roll_number_text, input_student_name_text)
+        except Exception as error_object:
+            messagebox.showerror("Add Failed", str(error_object))
+            return
+
+        self.roll_number_entry.delete(0, tk.END)
+        self.student_name_entry.delete(0, tk.END)
+        self.refresh_students_table()
+        self.refresh_overall_report_table()
+
+    def remove_student(self):
+        input_roll_number_text = self.roll_number_entry.get().strip()
+
+        if input_roll_number_text == "":
+            messagebox.showwarning("Input", "Enter roll in the roll field")
+            return
+
+        try:
+            run_backend_command("remove_student", input_roll_number_text)
+        except Exception as error_object:
+            messagebox.showerror("Remove Failed", str(error_object))
+            return
+
+        self.roll_number_entry.delete(0, tk.END)
+        self.refresh_students_table()
+        self.refresh_overall_report_table()
+
+    def build_attendance_form(self):
+        for each_widget in self.attendance_rows_frame.winfo_children():
+            each_widget.destroy()
+
+        self.status_box_by_roll_number = {}
+
+        if len(self.student_rows) == 0:
+            ttk.Label(self.attendance_rows_frame, text="No students found.").grid(row=0, column=0, sticky="w")
+            return
+
+        ttk.Label(self.attendance_rows_frame, text="Roll", width=12).grid(row=0, column=0, padx=8, pady=4)
+        ttk.Label(self.attendance_rows_frame, text="Name", width=40).grid(row=0, column=1, padx=8, pady=4)
+        ttk.Label(self.attendance_rows_frame, text="Status", width=10).grid(row=0, column=2, padx=8, pady=4)
+
+        current_row_number = 1
+
+        for each_roll_number_text, each_student_name_text in self.student_rows:
+            ttk.Label(self.attendance_rows_frame, text=each_roll_number_text, width=12).grid(
+                row=current_row_number,
+                column=0,
+                padx=8,
+                pady=3,
+            )
+
+            ttk.Label(self.attendance_rows_frame, text=each_student_name_text, width=40).grid(
+                row=current_row_number,
+                column=1,
+                padx=8,
+                pady=3,
+                sticky="w",
+            )
+
+            current_status_box = ttk.Combobox(
+                self.attendance_rows_frame,
+                values=["P", "A"],
+                width=8,
+                state="readonly",
+            )
+            current_status_box.set("P")
+            current_status_box.grid(row=current_row_number, column=2, padx=8, pady=3)
+
+            self.status_box_by_roll_number[each_roll_number_text] = current_status_box
+            current_row_number = current_row_number + 1
+
+    def submit_attendance(self):
+        input_date_text = self.attendance_date_entry.get().strip()
+
+        if input_date_text == "":
+            messagebox.showwarning("Input", "Date is required")
+            return
+
+        if len(self.student_rows) == 0:
+            messagebox.showwarning("Input", "No students to mark")
+            return
+
+        backend_command_argument_list = ["mark_attendance", input_date_text]
+
+        for each_roll_number_text, _unused_name in self.student_rows:
+            current_status_box = self.status_box_by_roll_number.get(each_roll_number_text)
+
+            if current_status_box is None:
+                messagebox.showwarning("Input", f"Missing status widget for roll {each_roll_number_text}")
+                return
+
+            current_status_text = current_status_box.get().strip().upper()
+
+            if current_status_text != "P" and current_status_text != "A":
+                messagebox.showwarning("Input", f"Invalid status for roll {each_roll_number_text}")
+                return
+
+            backend_command_argument_list.append(f"{each_roll_number_text}:{current_status_text}")
+
+        try:
+            run_backend_command(*backend_command_argument_list)
+        except Exception as error_object:
+            messagebox.showerror("Attendance Failed", str(error_object))
+            return
+
+        messagebox.showinfo("Success", "Attendance saved")
+        self.refresh_overall_report_table()
+
+    def get_student_report(self):
+        input_roll_number_text = self.report_roll_number_entry.get().strip()
+
+        if input_roll_number_text == "":
+            messagebox.showwarning("Input", "Roll is required")
+            return
+
+        try:
+            backend_output_text = run_backend_command("get_report", input_roll_number_text)
+        except Exception as error_object:
+            messagebox.showerror("Report Failed", str(error_object))
+            return
+
+        report_parts = backend_output_text.split("|")
+
+        if len(report_parts) != 6:
+            messagebox.showerror("Report Failed", "Unexpected backend format")
+            return
+
+        readable_report_text = ""
+        readable_report_text = readable_report_text + f"Roll: {report_parts[0]}\n"
+        readable_report_text = readable_report_text + f"Name: {report_parts[1]}\n"
+        readable_report_text = readable_report_text + f"Classes: {report_parts[2]}\n"
+        readable_report_text = readable_report_text + f"Present: {report_parts[3]}\n"
+        readable_report_text = readable_report_text + f"Absent: {report_parts[4]}\n"
+        readable_report_text = readable_report_text + f"Attendance: {report_parts[5]}%\n"
+
+        self.single_student_report_text.delete("1.0", tk.END)
+        self.single_student_report_text.insert(tk.END, readable_report_text)
+
+    def refresh_overall_report_table(self):
+        try:
+            backend_output_text = run_backend_command("get_overall")
+        except Exception as error_object:
+            messagebox.showerror("Overall Failed", str(error_object))
+            return
+
+        for each_old_row in self.overall_report_table.get_children():
+            self.overall_report_table.delete(each_old_row)
+
+        for each_line_text in backend_output_text.splitlines():
+            split_parts = each_line_text.split("|")
+            if len(split_parts) == 6:
+                self.overall_report_table.insert("", "end", values=split_parts)
+
+
+if __name__ == "__main__":
+    try:
+        build_backend_if_needed()
+    except Exception as error_object:
+        hidden_window = tk.Tk()
+        hidden_window.withdraw()
+        messagebox.showerror("Startup Error", str(error_object))
+        raise SystemExit(1)
+
+    main_window = AttendanceApp()
+    main_window.mainloop()
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+#include "../c_core/student.h"
+#include "../c_core/attendance.h"
+
+void print_error_message(const char *message_text) {
+    printf("ERR|%s\n", message_text);
+}
+
+void print_ok_message(const char *message_text) {
+    printf("OK|%s\n", message_text);
+}
+
+int convert_text_to_positive_roll_number(const char *text_value, int *number_output) {
+    int current_index = 0;
+    int final_number = 0;
+
+    if (text_value[0] == '\0') {
+        return 0;
+    }
+
+    while (text_value[current_index] != '\0') {
+        if (!isdigit((unsigned char)text_value[current_index])) {
+            return 0;
+        }
+        current_index++;
+    }
+
+    final_number = atoi(text_value);
+    if (final_number <= 0) {
+        return 0;
+    }
+
+    *number_output = final_number;
+    return 1;
+}
+
+int command_list_students(void) {
+    struct StudentRecord all_students[MAX_STUDENTS];
+    int total_students;
+    int student_index;
+
+    total_students = load_students_from_file(all_students);
+    sort_students_by_roll_number(all_students, total_students);
+
+    for (student_index = 0; student_index < total_students; student_index++) {
+        printf("%d|%s\n", all_students[student_index].roll_number, all_students[student_index].name);
+    }
+
+    return 0;
+}
+
+int command_add_student(int argument_count, char *argument_values[]) {
+    struct StudentRecord all_students[MAX_STUDENTS];
+    struct StudentRecord new_student_record;
+    char full_name_text[MAX_NAME_LENGTH];
+    int total_students;
+    int current_index;
+
+    if (argument_count < 4) {
+        print_error_message("Usage: add_student <roll> <name>");
+        return 1;
+    }
+
+    if (!convert_text_to_positive_roll_number(argument_values[2], &new_student_record.roll_number)) {
+        print_error_message("Invalid roll number");
+        return 1;
+    }
+
+    full_name_text[0] = '\0';
+
+    /* Join all words after the roll number into one name. */
+    for (current_index = 3; current_index < argument_count; current_index++) {
+        if (strlen(full_name_text) > 0) {
+            strncat(full_name_text, " ", sizeof(full_name_text) - strlen(full_name_text) - 1);
+        }
+        strncat(full_name_text, argument_values[current_index], sizeof(full_name_text) - strlen(full_name_text) - 1);
+    }
+
+    if (strlen(full_name_text) == 0 || is_blank_string(full_name_text)) {
+        print_error_message("Name is empty");
+        return 1;
+    }
+
+    strncpy(new_student_record.name, full_name_text, sizeof(new_student_record.name) - 1);
+    new_student_record.name[sizeof(new_student_record.name) - 1] = '\0';
+
+    total_students = load_students_from_file(all_students);
+
+    if (total_students >= MAX_STUDENTS) {
+        print_error_message("Student limit reached");
+        return 1;
+    }
+
+    if (find_student_index_by_roll(all_students, total_students, new_student_record.roll_number) != -1) {
+        print_error_message("Roll number already exists");
+        return 1;
+    }
+
+    all_students[total_students] = new_student_record;
+    total_students++;
+    sort_students_by_roll_number(all_students, total_students);
+
+    if (!save_students_to_file(all_students, total_students)) {
+        print_error_message("Could not save student file");
+        return 1;
+    }
+
+    print_ok_message("Student added");
+    return 0;
+}
+
+int command_remove_student(int argument_count, char *argument_values[]) {
+    struct StudentRecord all_students[MAX_STUDENTS];
+    int roll_number_to_remove;
+    int total_students;
+    int found_index;
+    int current_index;
+
+    if (argument_count != 3) {
+        print_error_message("Usage: remove_student <roll>");
+        return 1;
+    }
+
+    if (!convert_text_to_positive_roll_number(argument_values[2], &roll_number_to_remove)) {
+        print_error_message("Invalid roll number");
+        return 1;
+    }
+
+    total_students = load_students_from_file(all_students);
+    found_index = find_student_index_by_roll(all_students, total_students, roll_number_to_remove);
+
+    if (found_index == -1) {
+        print_error_message("Student not found");
+        return 1;
+    }
+
+    /* Shift the remaining students left after deleting one. */
+    for (current_index = found_index; current_index < total_students - 1; current_index++) {
+        all_students[current_index] = all_students[current_index + 1];
+    }
+
+    total_students--;
+
+    if (!save_students_to_file(all_students, total_students)) {
+        print_error_message("Could not save student file");
+        return 1;
+    }
+
+    if (!remove_attendance_for_roll(roll_number_to_remove)) {
+        print_error_message("Student removed but attendance cleanup failed");
+        return 1;
+    }
+
+    print_ok_message("Student removed");
+    return 0;
+}
+
+int read_one_status_token(const char *token_text, int *roll_number_output, char *status_output) {
+    char roll_number_text[32];
+    int current_index = 0;
+    int roll_text_index = 0;
+
+    while (token_text[current_index] != '\0' && token_text[current_index] != ':') {
+        if (roll_text_index >= (int)sizeof(roll_number_text) - 1) {
+            return 0;
+        }
+
+        roll_number_text[roll_text_index] = token_text[current_index];
+        roll_text_index++;
+        current_index++;
+    }
+
+    if (token_text[current_index] != ':') {
+        return 0;
+    }
+
+    roll_number_text[roll_text_index] = '\0';
+
+    if (!convert_text_to_positive_roll_number(roll_number_text, roll_number_output)) {
+        return 0;
+    }
+
+    if (token_text[current_index + 1] == '\0' || token_text[current_index + 2] != '\0') {
+        return 0;
+    }
+
+    *status_output = (char)toupper((unsigned char)token_text[current_index + 1]);
+
+    if (*status_output != 'P' && *status_output != 'A') {
+        return 0;
+    }
+
+    return 1;
+}
+
+int command_mark_attendance(int argument_count, char *argument_values[]) {
+    struct StudentRecord all_students[MAX_STUDENTS];
+    char status_for_each_student[MAX_STUDENTS];
+    int total_students;
+    int current_index;
+    FILE *attendance_file_pointer;
+
+    if (argument_count < 4) {
+        print_error_message("Usage: mark_attendance <YYYY-MM-DD> <roll:P|A> ...");
+        return 1;
+    }
+
+    if (!is_valid_date_format(argument_values[2])) {
+        print_error_message("Invalid date format (expected YYYY-MM-DD)");
+        return 1;
+    }
+
+    total_students = load_students_from_file(all_students);
+
+    if (total_students == 0) {
+        print_error_message("No students found");
+        return 1;
+    }
+
+    sort_students_by_roll_number(all_students, total_students);
+
+    for (current_index = 0; current_index < total_students; current_index++) {
+        status_for_each_student[current_index] = '\0';
+    }
+
+    for (current_index = 3; current_index < argument_count; current_index++) {
+        int roll_number_from_token;
+        char attendance_status;
+        int matching_student_index;
+
+        if (!read_one_status_token(argument_values[current_index], &roll_number_from_token, &attendance_status)) {
+            print_error_message("Invalid status token (expected roll:P or roll:A)");
+            return 1;
+        }
+
+        matching_student_index = find_student_index_by_roll(all_students, total_students, roll_number_from_token);
+
+        if (matching_student_index == -1) {
+            print_error_message("Roll in status token not found");
+            return 1;
+        }
+
+        status_for_each_student[matching_student_index] = attendance_status;
+    }
+
+    for (current_index = 0; current_index < total_students; current_index++) {
+        if (status_for_each_student[current_index] != 'P' && status_for_each_student[current_index] != 'A') {
+            print_error_message("Missing attendance status for one or more students");
+            return 1;
+        }
+    }
+
+    /* If the date is already there, rewrite that date's records. */
+    if (date_already_has_attendance(argument_values[2])) {
+        if (!rewrite_attendance_file_without_date(argument_values[2])) {
+            print_error_message("Could not rewrite existing attendance for date");
+            return 1;
+        }
+    }
+
+    attendance_file_pointer = fopen(ATTENDANCE_DATA_FILE, "a");
+
+    if (attendance_file_pointer == NULL) {
+        print_error_message("Could not open attendance file");
+        return 1;
+    }
+
+    for (current_index = 0; current_index < total_students; current_index++) {
+        fprintf(
+            attendance_file_pointer,
+            "%s|%d|%c\n",
+            argument_values[2],
+            all_students[current_index].roll_number,
+            status_for_each_student[current_index]
+        );
+    }
+
+    fclose(attendance_file_pointer);
+    print_ok_message("Attendance saved");
+    return 0;
+}
+
+int command_get_report(int argument_count, char *argument_values[]) {
+    struct StudentRecord all_students[MAX_STUDENTS];
+    struct AttendanceSummary student_attendance_summary;
+    int roll_number_to_search;
+    int total_students;
+    int found_student_index;
+    double attendance_percentage = 0.0;
+
+    if (argument_count != 3) {
+        print_error_message("Usage: get_report <roll>");
+        return 1;
+    }
+
+    if (!convert_text_to_positive_roll_number(argument_values[2], &roll_number_to_search)) {
+        print_error_message("Invalid roll number");
+        return 1;
+    }
+
+    total_students = load_students_from_file(all_students);
+    found_student_index = find_student_index_by_roll(all_students, total_students, roll_number_to_search);
+
+    if (found_student_index == -1) {
+        print_error_message("Student not found");
+        return 1;
+    }
+
+    student_attendance_summary = get_student_attendance_summary(roll_number_to_search);
+
+    if (student_attendance_summary.classes_held > 0) {
+        attendance_percentage =
+            ((double)student_attendance_summary.present_count * 100.0) /
+            (double)student_attendance_summary.classes_held;
+    }
+
+    printf(
+        "%d|%s|%d|%d|%d|%.2f\n",
+        all_students[found_student_index].roll_number,
+        all_students[found_student_index].name,
+        student_attendance_summary.classes_held,
+        student_attendance_summary.present_count,
+        student_attendance_summary.absent_count,
+        attendance_percentage
+    );
+
+    return 0;
+}
+
+int command_get_overall(void) {
+    struct StudentRecord all_students[MAX_STUDENTS];
+    int total_students;
+    int student_index;
+
+    total_students = load_students_from_file(all_students);
+    sort_students_by_roll_number(all_students, total_students);
+
+    for (student_index = 0; student_index < total_students; student_index++) {
+        struct AttendanceSummary current_student_summary;
+        double attendance_percentage = 0.0;
+
+        current_student_summary = get_student_attendance_summary(all_students[student_index].roll_number);
+
+        if (current_student_summary.classes_held > 0) {
+            attendance_percentage =
+                ((double)current_student_summary.present_count * 100.0) /
+                (double)current_student_summary.classes_held;
+        }
+
+        printf(
+            "%d|%s|%d|%d|%d|%.2f\n",
+            all_students[student_index].roll_number,
+            all_students[student_index].name,
+            current_student_summary.classes_held,
+            current_student_summary.present_count,
+            current_student_summary.absent_count,
+            attendance_percentage
+        );
+    }
+
+    return 0;
+}
+
+int main(int argument_count, char *argument_values[]) {
+    if (argument_count < 2) {
+        print_error_message("Usage: backend_app <command> [args]");
+        return 1;
+    }
+
+    if (strcmp(argument_values[1], "list_students") == 0) {
+        return command_list_students();
+    }
+
+    if (strcmp(argument_values[1], "add_student") == 0) {
+        return command_add_student(argument_count, argument_values);
+    }
+
+    if (strcmp(argument_values[1], "remove_student") == 0) {
+        return command_remove_student(argument_count, argument_values);
+    }
+
+    if (strcmp(argument_values[1], "mark_attendance") == 0) {
+        return command_mark_attendance(argument_count, argument_values);
+    }
+
+    if (strcmp(argument_values[1], "get_report") == 0) {
+        return command_get_report(argument_count, argument_values);
+    }
+
+    if (strcmp(argument_values[1], "get_overall") == 0) {
+        return command_get_overall();
+    }
+
+    print_error_message("Unknown command");
+    return 1;
+}
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(void) {
+    int command_result;
+
+    /* Run the Python GUI from the main C file. */
+    command_result = system("python3 CODE/python_gui/app.py");
+
+    if (command_result != 0) {
+        printf("Could not start the app.\n");
+        return 1;
+    }
+
+    return 0;
+}
