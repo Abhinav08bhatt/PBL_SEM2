@@ -38,12 +38,17 @@ int convert_text_to_positive_roll_number(const char *text_value, int *number_out
     return 1;
 }
 
-int command_list_students(void) {
-    struct StudentRecord all_students[MAX_STUDENTS];
+int command_list_students(int argument_count, char *argument_values[]) {
+    struct StudentRecord all_students[MAX_SECTION_STUDENTS];
     int total_students;
     int student_index;
 
-    total_students = load_students_from_file(all_students);
+    if (argument_count != 4) {
+        print_error_message("Usage: list_students <course> <section>");
+        return 1;
+    }
+
+    total_students = load_students_from_file(argument_values[2], argument_values[3], all_students);
     sort_students_by_roll_number(all_students, total_students);
 
     for (student_index = 0; student_index < total_students; student_index++) {
@@ -54,26 +59,25 @@ int command_list_students(void) {
 }
 
 int command_add_student(int argument_count, char *argument_values[]) {
-    struct StudentRecord all_students[MAX_STUDENTS];
+    struct StudentRecord all_students[MAX_SECTION_STUDENTS];
     struct StudentRecord new_student_record;
     char full_name_text[MAX_NAME_LENGTH];
     int total_students;
     int current_index;
 
-    if (argument_count < 4) {
-        print_error_message("Usage: add_student <roll> <name>");
+    if (argument_count < 6) {
+        print_error_message("Usage: add_student <course> <section> <roll> <name>");
         return 1;
     }
 
-    if (!convert_text_to_positive_roll_number(argument_values[2], &new_student_record.roll_number)) {
+    if (!convert_text_to_positive_roll_number(argument_values[4], &new_student_record.roll_number)) {
         print_error_message("Invalid roll number");
         return 1;
     }
 
     full_name_text[0] = '\0';
 
-    /* Join all words after the roll number into one name. */
-    for (current_index = 3; current_index < argument_count; current_index++) {
+    for (current_index = 5; current_index < argument_count; current_index++) {
         if (strlen(full_name_text) > 0) {
             strncat(full_name_text, " ", sizeof(full_name_text) - strlen(full_name_text) - 1);
         }
@@ -88,15 +92,15 @@ int command_add_student(int argument_count, char *argument_values[]) {
     strncpy(new_student_record.name, full_name_text, sizeof(new_student_record.name) - 1);
     new_student_record.name[sizeof(new_student_record.name) - 1] = '\0';
 
-    total_students = load_students_from_file(all_students);
+    total_students = load_students_from_file(argument_values[2], argument_values[3], all_students);
 
-    if (total_students >= MAX_STUDENTS) {
-        print_error_message("Student limit reached");
+    if (total_students >= MAX_SECTION_STUDENTS) {
+        print_error_message("Section student limit reached");
         return 1;
     }
 
     if (find_student_index_by_roll(all_students, total_students, new_student_record.roll_number) != -1) {
-        print_error_message("Roll number already exists");
+        print_error_message("Roll number already exists in this section");
         return 1;
     }
 
@@ -104,7 +108,7 @@ int command_add_student(int argument_count, char *argument_values[]) {
     total_students++;
     sort_students_by_roll_number(all_students, total_students);
 
-    if (!save_students_to_file(all_students, total_students)) {
+    if (!save_students_to_file(argument_values[2], argument_values[3], all_students, total_students)) {
         print_error_message("Could not save student file");
         return 1;
     }
@@ -114,23 +118,23 @@ int command_add_student(int argument_count, char *argument_values[]) {
 }
 
 int command_remove_student(int argument_count, char *argument_values[]) {
-    struct StudentRecord all_students[MAX_STUDENTS];
+    struct StudentRecord all_students[MAX_SECTION_STUDENTS];
     int roll_number_to_remove;
     int total_students;
     int found_index;
     int current_index;
 
-    if (argument_count != 3) {
-        print_error_message("Usage: remove_student <roll>");
+    if (argument_count != 5) {
+        print_error_message("Usage: remove_student <course> <section> <roll>");
         return 1;
     }
 
-    if (!convert_text_to_positive_roll_number(argument_values[2], &roll_number_to_remove)) {
+    if (!convert_text_to_positive_roll_number(argument_values[4], &roll_number_to_remove)) {
         print_error_message("Invalid roll number");
         return 1;
     }
 
-    total_students = load_students_from_file(all_students);
+    total_students = load_students_from_file(argument_values[2], argument_values[3], all_students);
     found_index = find_student_index_by_roll(all_students, total_students, roll_number_to_remove);
 
     if (found_index == -1) {
@@ -138,19 +142,18 @@ int command_remove_student(int argument_count, char *argument_values[]) {
         return 1;
     }
 
-    /* Shift the remaining students left after deleting one. */
     for (current_index = found_index; current_index < total_students - 1; current_index++) {
         all_students[current_index] = all_students[current_index + 1];
     }
 
     total_students--;
 
-    if (!save_students_to_file(all_students, total_students)) {
+    if (!save_students_to_file(argument_values[2], argument_values[3], all_students, total_students)) {
         print_error_message("Could not save student file");
         return 1;
     }
 
-    if (!remove_attendance_for_roll(roll_number_to_remove)) {
+    if (!remove_attendance_for_roll(argument_values[2], argument_values[3], roll_number_to_remove)) {
         print_error_message("Student removed but attendance cleanup failed");
         return 1;
     }
@@ -198,26 +201,27 @@ int read_one_status_token(const char *token_text, int *roll_number_output, char 
 }
 
 int command_mark_attendance(int argument_count, char *argument_values[]) {
-    struct StudentRecord all_students[MAX_STUDENTS];
-    char status_for_each_student[MAX_STUDENTS];
+    struct StudentRecord all_students[MAX_SECTION_STUDENTS];
+    char status_for_each_student[MAX_SECTION_STUDENTS];
     int total_students;
     int current_index;
     FILE *attendance_file_pointer;
+    char filepath[256];
 
-    if (argument_count < 4) {
-        print_error_message("Usage: mark_attendance <YYYY-MM-DD> <roll:P|A> ...");
+    if (argument_count < 6) {
+        print_error_message("Usage: mark_attendance <course> <section> <YYYY-MM-DD> <roll:P|A> ...");
         return 1;
     }
 
-    if (!is_valid_date_format(argument_values[2])) {
+    if (!is_valid_date_format(argument_values[4])) {
         print_error_message("Invalid date format (expected YYYY-MM-DD)");
         return 1;
     }
 
-    total_students = load_students_from_file(all_students);
+    total_students = load_students_from_file(argument_values[2], argument_values[3], all_students);
 
     if (total_students == 0) {
-        print_error_message("No students found");
+        print_error_message("No students found in this section");
         return 1;
     }
 
@@ -227,7 +231,7 @@ int command_mark_attendance(int argument_count, char *argument_values[]) {
         status_for_each_student[current_index] = '\0';
     }
 
-    for (current_index = 3; current_index < argument_count; current_index++) {
+    for (current_index = 5; current_index < argument_count; current_index++) {
         int roll_number_from_token;
         char attendance_status;
         int matching_student_index;
@@ -254,15 +258,15 @@ int command_mark_attendance(int argument_count, char *argument_values[]) {
         }
     }
 
-    /* If the date is already there, rewrite that date's records. */
-    if (date_already_has_attendance(argument_values[2])) {
-        if (!rewrite_attendance_file_without_date(argument_values[2])) {
+    if (date_already_has_attendance(argument_values[2], argument_values[3], argument_values[4])) {
+        if (!rewrite_attendance_file_without_date(argument_values[2], argument_values[3], argument_values[4])) {
             print_error_message("Could not rewrite existing attendance for date");
             return 1;
         }
     }
 
-    attendance_file_pointer = fopen(ATTENDANCE_DATA_FILE, "a");
+    get_data_file_path(filepath, "attendance", argument_values[2], argument_values[3]);
+    attendance_file_pointer = fopen(filepath, "a");
 
     if (attendance_file_pointer == NULL) {
         print_error_message("Could not open attendance file");
@@ -273,7 +277,7 @@ int command_mark_attendance(int argument_count, char *argument_values[]) {
         fprintf(
             attendance_file_pointer,
             "%s|%d|%c\n",
-            argument_values[2],
+            argument_values[4],
             all_students[current_index].roll_number,
             status_for_each_student[current_index]
         );
@@ -285,24 +289,24 @@ int command_mark_attendance(int argument_count, char *argument_values[]) {
 }
 
 int command_get_report(int argument_count, char *argument_values[]) {
-    struct StudentRecord all_students[MAX_STUDENTS];
+    struct StudentRecord all_students[MAX_SECTION_STUDENTS];
     struct AttendanceSummary student_attendance_summary;
     int roll_number_to_search;
     int total_students;
     int found_student_index;
     double attendance_percentage = 0.0;
 
-    if (argument_count != 3) {
-        print_error_message("Usage: get_report <roll>");
+    if (argument_count != 5) {
+        print_error_message("Usage: get_report <course> <section> <roll>");
         return 1;
     }
 
-    if (!convert_text_to_positive_roll_number(argument_values[2], &roll_number_to_search)) {
+    if (!convert_text_to_positive_roll_number(argument_values[4], &roll_number_to_search)) {
         print_error_message("Invalid roll number");
         return 1;
     }
 
-    total_students = load_students_from_file(all_students);
+    total_students = load_students_from_file(argument_values[2], argument_values[3], all_students);
     found_student_index = find_student_index_by_roll(all_students, total_students, roll_number_to_search);
 
     if (found_student_index == -1) {
@@ -310,7 +314,7 @@ int command_get_report(int argument_count, char *argument_values[]) {
         return 1;
     }
 
-    student_attendance_summary = get_student_attendance_summary(roll_number_to_search);
+    student_attendance_summary = get_student_attendance_summary(argument_values[2], argument_values[3], roll_number_to_search);
 
     if (student_attendance_summary.classes_held > 0) {
         attendance_percentage =
@@ -331,19 +335,24 @@ int command_get_report(int argument_count, char *argument_values[]) {
     return 0;
 }
 
-int command_get_overall(void) {
-    struct StudentRecord all_students[MAX_STUDENTS];
+int command_get_overall(int argument_count, char *argument_values[]) {
+    struct StudentRecord all_students[MAX_SECTION_STUDENTS];
     int total_students;
     int student_index;
 
-    total_students = load_students_from_file(all_students);
+    if (argument_count != 4) {
+        print_error_message("Usage: get_overall <course> <section>");
+        return 1;
+    }
+
+    total_students = load_students_from_file(argument_values[2], argument_values[3], all_students);
     sort_students_by_roll_number(all_students, total_students);
 
     for (student_index = 0; student_index < total_students; student_index++) {
         struct AttendanceSummary current_student_summary;
         double attendance_percentage = 0.0;
 
-        current_student_summary = get_student_attendance_summary(all_students[student_index].roll_number);
+        current_student_summary = get_student_attendance_summary(argument_values[2], argument_values[3], all_students[student_index].roll_number);
 
         if (current_student_summary.classes_held > 0) {
             attendance_percentage =
@@ -372,7 +381,7 @@ int main(int argument_count, char *argument_values[]) {
     }
 
     if (strcmp(argument_values[1], "list_students") == 0) {
-        return command_list_students();
+        return command_list_students(argument_count, argument_values);
     }
 
     if (strcmp(argument_values[1], "add_student") == 0) {
@@ -392,7 +401,7 @@ int main(int argument_count, char *argument_values[]) {
     }
 
     if (strcmp(argument_values[1], "get_overall") == 0) {
-        return command_get_overall();
+        return command_get_overall(argument_count, argument_values);
     }
 
     print_error_message("Unknown command");

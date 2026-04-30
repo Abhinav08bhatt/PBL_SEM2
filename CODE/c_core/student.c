@@ -55,7 +55,6 @@ int is_valid_date_format(const char *date_value) {
     if (strlen(date_value) != 10) return 0;
     if (date_value[4] != '-' || date_value[7] != '-') return 0;
 
-    /* Only digits are allowed apart from the two '-' positions. */
     for (i = 0; i < 10; i++) {
         if (i == 4 || i == 7) continue;
         if (!isdigit((unsigned char)date_value[i])) return 0;
@@ -74,7 +73,6 @@ int is_blank_string(const char *text) {
 
 void sort_students_by_roll_number(struct StudentRecord students[], int student_count) {
     int i, j;
-    /* Bubble sort is enough here because the list is small. */
     for (i = 0; i < student_count - 1; i++) {
         for (j = 0; j < student_count - i - 1; j++) {
             if (students[j].roll_number > students[j + 1].roll_number) {
@@ -84,6 +82,23 @@ void sort_students_by_roll_number(struct StudentRecord students[], int student_c
             }
         }
     }
+}
+
+void get_data_file_path(char *filepath, const char *type, const char *course, const char *section) {
+    char clean_course[50];
+    int i = 0, j = 0;
+    
+    while (course[i] != '\0' && j < 49) {
+        if (course[i] == ' ' || course[i] == '(' || course[i] == ')') {
+            if (course[i] == ' ') clean_course[j++] = '_';
+        } else {
+            clean_course[j++] = course[i];
+        }
+        i++;
+    }
+    clean_course[j] = '\0';
+    
+    sprintf(filepath, "data/%s_%s_%s.txt", clean_course, section, type);
 }
 
 int parse_student_line(const char *line, struct StudentRecord *student) {
@@ -97,14 +112,15 @@ int parse_student_line(const char *line, struct StudentRecord *student) {
     return 1;
 }
 
-int load_students_from_file(struct StudentRecord students[]) {
-    FILE *fp = fopen(STUDENT_DATA_FILE, "r");
+int load_students_from_file(const char *course, const char *section, struct StudentRecord students[]) {
+    char filepath[256];
+    get_data_file_path(filepath, "students", course, section);
+    FILE *fp = fopen(filepath, "r");
     char line[300];
     int count = 0;
     if (fp == NULL) return 0;
 
-    /* Read one line at a time and keep only valid student records. */
-    while (fgets(line, sizeof(line), fp) != NULL && count < MAX_STUDENTS) {
+    while (fgets(line, sizeof(line), fp) != NULL && count < MAX_SECTION_STUDENTS) {
         struct StudentRecord s;
         if (parse_student_line(line, &s)) {
             students[count] = s;
@@ -115,8 +131,10 @@ int load_students_from_file(struct StudentRecord students[]) {
     return count;
 }
 
-int save_students_to_file(struct StudentRecord students[], int student_count) {
-    FILE *fp = fopen(STUDENT_DATA_FILE, "w");
+int save_students_to_file(const char *course, const char *section, struct StudentRecord students[], int student_count) {
+    char filepath[256];
+    get_data_file_path(filepath, "students", course, section);
+    FILE *fp = fopen(filepath, "w");
     int i;
     if (fp == NULL) return 0;
 
@@ -135,14 +153,15 @@ int find_student_index_by_roll(struct StudentRecord students[], int student_coun
     return -1;
 }
 
-int remove_attendance_for_roll(int roll_number) {
-    FILE *input = fopen(ATTENDANCE_DATA_FILE, "r");
+int remove_attendance_for_roll(const char *course, const char *section, int roll_number) {
+    char filepath[256];
+    get_data_file_path(filepath, "attendance", course, section);
+    FILE *input = fopen(filepath, "r");
     FILE *temp;
     char line[300];
-    if (input == NULL) return 1;
+    if (input == NULL) return 1; // no attendance file to remove from
 
-    /* Write all records except the removed student's records into a temp file. */
-    temp = fopen("attendance_tmp.txt", "w");
+    temp = fopen("data/attendance_tmp.txt", "w");
     if (temp == NULL) {
         fclose(input);
         return 0;
@@ -161,25 +180,45 @@ int remove_attendance_for_roll(int roll_number) {
 
     fclose(input);
     fclose(temp);
-    remove(ATTENDANCE_DATA_FILE);
-    /* Replace the old attendance file with the cleaned one. */
-    if (rename("attendance_tmp.txt", ATTENDANCE_DATA_FILE) != 0) return 0;
+    remove(filepath);
+    if (rename("data/attendance_tmp.txt", filepath) != 0) return 0;
     return 1;
 }
 
 void add_student_screen(void) {
-    struct StudentRecord students[MAX_STUDENTS];
+    struct StudentRecord students[MAX_SECTION_STUDENTS];
     struct StudentRecord new_student;
-    int count = load_students_from_file(students);
+    char course[50];
+    char section[10];
+    int count;
 
     print_cli_section_title("ADD STUDENT");
-    if (count >= MAX_STUDENTS) {
-        print_cli_status_message("Cannot add more students.");
+    
+    printf("| Enter course (BSc CS, BSc IT, BCA, BCA (AIDS)): ");
+    read_line_input(course, sizeof(course));
+    if (is_blank_string(course)) {
+        print_cli_status_message("Course is empty.");
         wait_for_user_enter();
         return;
     }
 
-    printf("| Enter roll number: ");
+    printf("| Enter section (A, B, C): ");
+    read_line_input(section, sizeof(section));
+    if (is_blank_string(section)) {
+        print_cli_status_message("Section is empty.");
+        wait_for_user_enter();
+        return;
+    }
+    
+    count = load_students_from_file(course, section, students);
+
+    if (count >= MAX_SECTION_STUDENTS) {
+        print_cli_status_message("Cannot add more students to this section (max 20).");
+        wait_for_user_enter();
+        return;
+    }
+
+    printf("| Enter roll number (1-20): ");
     if (scanf("%d", &new_student.roll_number) != 1 || new_student.roll_number <= 0) {
         clear_input_buffer();
         print_cli_status_message("Invalid roll number.");
@@ -189,7 +228,7 @@ void add_student_screen(void) {
     clear_input_buffer();
 
     if (find_student_index_by_roll(students, count, new_student.roll_number) != -1) {
-        print_cli_status_message("Roll number already exists.");
+        print_cli_status_message("Roll number already exists in this section.");
         wait_for_user_enter();
         return;
     }
@@ -205,7 +244,7 @@ void add_student_screen(void) {
     students[count] = new_student;
     count++;
     sort_students_by_roll_number(students, count);
-    if (!save_students_to_file(students, count)) {
+    if (!save_students_to_file(course, section, students, count)) {
         print_cli_status_message("Could not save file.");
         wait_for_user_enter();
         return;
@@ -215,14 +254,25 @@ void add_student_screen(void) {
 }
 
 void remove_student_screen(void) {
-    struct StudentRecord students[MAX_STUDENTS];
-    int count = load_students_from_file(students);
+    struct StudentRecord students[MAX_SECTION_STUDENTS];
+    char course[50];
+    char section[10];
+    int count;
     int roll;
     int i, index;
 
     print_cli_section_title("REMOVE STUDENT");
+    
+    printf("| Enter course (BSc CS, BSc IT, BCA, BCA (AIDS)): ");
+    read_line_input(course, sizeof(course));
+    
+    printf("| Enter section (A, B, C): ");
+    read_line_input(section, sizeof(section));
+
+    count = load_students_from_file(course, section, students);
+
     if (count == 0) {
-        print_cli_status_message("No students to remove.");
+        print_cli_status_message("No students found in this section.");
         wait_for_user_enter();
         return;
     }
@@ -238,41 +288,50 @@ void remove_student_screen(void) {
 
     index = find_student_index_by_roll(students, count, roll);
     if (index == -1) {
-        print_cli_status_message("Student not found.");
+        print_cli_status_message("Student not found in this section.");
         wait_for_user_enter();
         return;
     }
 
-    /* Shift remaining students one position left after removal. */
     for (i = index; i < count - 1; i++) {
         students[i] = students[i + 1];
     }
     count--;
 
-    if (!save_students_to_file(students, count)) {
+    if (!save_students_to_file(course, section, students, count)) {
         print_cli_status_message("Could not save student file.");
         wait_for_user_enter();
         return;
     }
-    remove_attendance_for_roll(roll);
+    remove_attendance_for_roll(course, section, roll);
     print_cli_status_message("Student removed successfully.");
     wait_for_user_enter();
 }
 
-
 void show_all_students_screen(void) {
-    struct StudentRecord students[MAX_STUDENTS];
-    int count = load_students_from_file(students);
+    struct StudentRecord students[MAX_SECTION_STUDENTS];
+    char course[50];
+    char section[10];
+    int count;
     int i;
 
-    sort_students_by_roll_number(students, count);
-
     print_cli_section_title("ALL STUDENTS");
+    
+    printf("| Enter course (BSc CS, BSc IT, BCA, BCA (AIDS)): ");
+    read_line_input(course, sizeof(course));
+    
+    printf("| Enter section (A, B, C): ");
+    read_line_input(section, sizeof(section));
+
+    count = load_students_from_file(course, section, students);
+
     if (count == 0) {
-        print_cli_status_message("No students found.");
+        print_cli_status_message("No students found in this section.");
         wait_for_user_enter();
         return;
     }
+    
+    sort_students_by_roll_number(students, count);
 
     printf("| %-10s | %-41s |\n", "Roll No", "Name");
     printf("+------------+-------------------------------------------+\n");

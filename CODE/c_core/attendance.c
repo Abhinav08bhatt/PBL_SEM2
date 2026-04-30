@@ -13,17 +13,18 @@ int parse_attendance_record_line(const char *line, char *date, int *roll, char *
     return 1;
 }
 
-int date_already_has_attendance(const char *target_date) {
-    FILE *fp = fopen(ATTENDANCE_DATA_FILE, "r");
+int date_already_has_attendance(const char *course, const char *section, const char *target_date) {
+    char filepath[256];
+    get_data_file_path(filepath, "attendance", course, section);
+    FILE *fp = fopen(filepath, "r");
     char line[300];
     if (fp == NULL) return 0;
 
-    /* If any record already uses this date, attendance was marked before. */
     while (fgets(line, sizeof(line), fp) != NULL) {
         char d[11];
         int r;
-        char s;
-        if (parse_attendance_record_line(line, d, &r, &s)) {
+        char stat;
+        if (parse_attendance_record_line(line, d, &r, &stat)) {
             if (strcmp(d, target_date) == 0) {
                 fclose(fp);
                 return 1;
@@ -34,14 +35,18 @@ int date_already_has_attendance(const char *target_date) {
     return 0;
 }
 
-int rewrite_attendance_file_without_date(const char *target_date) {
-    FILE *input = fopen(ATTENDANCE_DATA_FILE, "r");
+int rewrite_attendance_file_without_date(const char *course, const char *section, const char *target_date) {
+    char filepath[256];
+    char temp_filepath[256];
+    get_data_file_path(filepath, "attendance", course, section);
+    sprintf(temp_filepath, "data/attendance_tmp.txt");
+    
+    FILE *input = fopen(filepath, "r");
     FILE *temp;
     char line[300];
     if (input == NULL) return 1;
 
-    /* Rebuild the file while skipping the selected date. */
-    temp = fopen("attendance_tmp.txt", "w");
+    temp = fopen(temp_filepath, "w");
     if (temp == NULL) {
         fclose(input);
         return 0;
@@ -50,36 +55,48 @@ int rewrite_attendance_file_without_date(const char *target_date) {
     while (fgets(line, sizeof(line), input) != NULL) {
         char d[11];
         int r;
-        char s;
-        if (parse_attendance_record_line(line, d, &r, &s)) {
+        char stat;
+        if (parse_attendance_record_line(line, d, &r, &stat)) {
             if (strcmp(d, target_date) != 0) {
-                fprintf(temp, "%s|%d|%c\n", d, r, s);
+                fprintf(temp, "%s|%d|%c\n", d, r, stat);
             }
         }
     }
 
     fclose(input);
     fclose(temp);
-    remove(ATTENDANCE_DATA_FILE);
-    if (rename("attendance_tmp.txt", ATTENDANCE_DATA_FILE) != 0) return 0;
+    remove(filepath);
+    if (rename(temp_filepath, filepath) != 0) return 0;
     return 1;
 }
 
 void mark_attendance_screen(void) {
-    struct StudentRecord students[MAX_STUDENTS];
-    int count = load_students_from_file(students);
+    struct StudentRecord students[MAX_SECTION_STUDENTS];
+    char course[50];
+    char section[10];
+    int count;
     char date[11];
     int i;
+    char filepath[256];
 
     print_cli_section_title("MARK ATTENDANCE");
+    
+    printf("| Enter course (BSc CS, BSc IT, BCA, BCA (AIDS)): ");
+    read_line_input(course, sizeof(course));
+    
+    printf("| Enter section (A, B, C): ");
+    read_line_input(section, sizeof(section));
+
+    count = load_students_from_file(course, section, students);
+
     if (count == 0) {
-        print_cli_status_message("No students found.");
+        print_cli_status_message("No students found in this section.");
         wait_for_user_enter();
         return;
     }
 
     sort_students_by_roll_number(students, count);
-    clear_input_buffer();
+    
     printf("| Enter date (YYYY-MM-DD): ");
     read_line_input(date, sizeof(date));
     if (!is_valid_date_format(date)) {
@@ -88,9 +105,9 @@ void mark_attendance_screen(void) {
         return;
     }
 
-    if (date_already_has_attendance(date)) {
+    if (date_already_has_attendance(course, section, date)) {
         char ch;
-        printf("| Date already exists. Overwrite? (Y/N): ");
+        printf("| Attendance already exists for this section. Overwrite? (Y/N): ");
         scanf(" %c", &ch);
         ch = (char)toupper((unsigned char)ch);
         if (ch != 'Y') {
@@ -100,14 +117,15 @@ void mark_attendance_screen(void) {
             return;
         }
         clear_input_buffer();
-        if (!rewrite_attendance_file_without_date(date)) {
+        if (!rewrite_attendance_file_without_date(course, section, date)) {
             print_cli_status_message("Could not rewrite attendance.");
             wait_for_user_enter();
             return;
         }
     }
 
-    FILE *fp = fopen(ATTENDANCE_DATA_FILE, "a");
+    get_data_file_path(filepath, "attendance", course, section);
+    FILE *fp = fopen(filepath, "a");
     if (fp == NULL) {
         print_cli_status_message("Could not open attendance file.");
         wait_for_user_enter();
@@ -120,7 +138,6 @@ void mark_attendance_screen(void) {
 
     for (i = 0; i < count; i++) {
         char s;
-        /* Keep asking until a valid attendance status is entered. */
         while (1) {
             printf("| Roll %d (%s) -> P/A: ", students[i].roll_number, students[i].name);
             scanf(" %c", &s);
@@ -137,9 +154,11 @@ void mark_attendance_screen(void) {
     wait_for_user_enter();
 }
 
-struct AttendanceSummary get_student_attendance_summary(int roll_number) {
+struct AttendanceSummary get_student_attendance_summary(const char *course, const char *section, int roll_number) {
     struct AttendanceSummary result;
-    FILE *fp = fopen(ATTENDANCE_DATA_FILE, "r");
+    char filepath[256];
+    get_data_file_path(filepath, "attendance", course, section);
+    FILE *fp = fopen(filepath, "r");
     char line[300];
     result.classes_held = 0;
     result.present_count = 0;
@@ -147,15 +166,14 @@ struct AttendanceSummary get_student_attendance_summary(int roll_number) {
 
     if (fp == NULL) return result;
 
-    /* Count only the rows that belong to the requested student. */
     while (fgets(line, sizeof(line), fp) != NULL) {
         char d[11];
         int r;
-        char s;
-        if (parse_attendance_record_line(line, d, &r, &s)) {
+        char stat;
+        if (parse_attendance_record_line(line, d, &r, &stat)) {
             if (r == roll_number) {
                 result.classes_held++;
-                if (s == 'P') result.present_count++;
+                if (stat == 'P') result.present_count++;
                 else result.absent_count++;
             }
         }
@@ -166,16 +184,27 @@ struct AttendanceSummary get_student_attendance_summary(int roll_number) {
 }
 
 void search_student_report_screen(void) {
-    struct StudentRecord students[MAX_STUDENTS];
-    int count = load_students_from_file(students);
+    struct StudentRecord students[MAX_SECTION_STUDENTS];
+    char course[50];
+    char section[10];
+    int count;
     int roll;
     int index;
     struct AttendanceSummary a;
     double percent = 0.0;
 
     print_cli_section_title("SEARCH STUDENT REPORT");
+    
+    printf("| Enter course (BSc CS, BSc IT, BCA, BCA (AIDS)): ");
+    read_line_input(course, sizeof(course));
+    
+    printf("| Enter section (A, B, C): ");
+    read_line_input(section, sizeof(section));
+
+    count = load_students_from_file(course, section, students);
+    
     if (count == 0) {
-        print_cli_status_message("No students available.");
+        print_cli_status_message("No students found in this section.");
         wait_for_user_enter();
         return;
     }
@@ -191,12 +220,12 @@ void search_student_report_screen(void) {
 
     index = find_student_index_by_roll(students, count, roll);
     if (index == -1) {
-        print_cli_status_message("Student not found.");
+        print_cli_status_message("Student not found in this section.");
         wait_for_user_enter();
         return;
     }
 
-    a = get_student_attendance_summary(roll);
+    a = get_student_attendance_summary(course, section, roll);
     if (a.classes_held > 0) {
         percent = ((double)a.present_count * 100.0) / (double)a.classes_held;
     }
@@ -213,13 +242,24 @@ void search_student_report_screen(void) {
 }
 
 void show_overall_attendance_screen(void) {
-    struct StudentRecord students[MAX_STUDENTS];
-    int count = load_students_from_file(students);
+    struct StudentRecord students[MAX_SECTION_STUDENTS];
+    char course[50];
+    char section[10];
+    int count;
     int i;
 
     print_cli_section_title("OVERALL ATTENDANCE");
+    
+    printf("| Enter course (BSc CS, BSc IT, BCA, BCA (AIDS)): ");
+    read_line_input(course, sizeof(course));
+    
+    printf("| Enter section (A, B, C): ");
+    read_line_input(section, sizeof(section));
+
+    count = load_students_from_file(course, section, students);
+
     if (count == 0) {
-        print_cli_status_message("No students available.");
+        print_cli_status_message("No students available in this section.");
         wait_for_user_enter();
         return;
     }
@@ -230,7 +270,7 @@ void show_overall_attendance_screen(void) {
     printf("+--------------------------------------------------------------------------------+\n");
 
     for (i = 0; i < count; i++) {
-        struct AttendanceSummary a = get_student_attendance_summary(students[i].roll_number);
+        struct AttendanceSummary a = get_student_attendance_summary(course, section, students[i].roll_number);
         double percent = 0.0;
 
         if (a.classes_held > 0) {
