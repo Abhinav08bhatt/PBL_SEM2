@@ -291,8 +291,11 @@ int command_mark_attendance(int argument_count, char *argument_values[]) {
 
 int command_get_grades(int argument_count, char *argument_values[]) {
     int roll_number;
-    int mid_marks[5];
-    int end_marks[5];
+    struct SubjectGrades mid_marks[5];
+    struct SubjectGrades end_marks[5];
+    float sgpa;
+    int passed, failed;
+    char overall_grade;
 
     if (argument_count != 5) {
         print_error_message("Usage: get_grades <course> <section> <roll>");
@@ -305,18 +308,29 @@ int command_get_grades(int argument_count, char *argument_values[]) {
     }
 
     get_student_grades(argument_values[2], argument_values[3], roll_number, mid_marks, end_marks);
-    printf("%d|%d|%d|%d|%d|%d|%d|%d|%d|%d\n", 
-           mid_marks[0], mid_marks[1], mid_marks[2], mid_marks[3], mid_marks[4],
-           end_marks[0], end_marks[1], end_marks[2], end_marks[3], end_marks[4]);
+    calculate_student_grade_stats(mid_marks, end_marks, &sgpa, &passed, &failed, &overall_grade);
+
+    printf("%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%c|%.2f\n", 
+           mid_marks[0].theory, mid_marks[0].practical, mid_marks[0].internal,
+           mid_marks[1].theory, mid_marks[1].practical, mid_marks[1].internal,
+           mid_marks[2].theory, mid_marks[2].practical, mid_marks[2].internal,
+           mid_marks[3].theory, mid_marks[3].practical, mid_marks[3].internal,
+           mid_marks[4].theory, mid_marks[4].practical, mid_marks[4].internal,
+           end_marks[0].theory, end_marks[0].practical, end_marks[0].internal,
+           end_marks[1].theory, end_marks[1].practical, end_marks[1].internal,
+           end_marks[2].theory, end_marks[2].practical, end_marks[2].internal,
+           end_marks[3].theory, end_marks[3].practical, end_marks[3].internal,
+           end_marks[4].theory, end_marks[4].practical, end_marks[4].internal,
+           passed, failed, overall_grade, sgpa);
     return 0;
 }
 
 int command_add_grades(int argument_count, char *argument_values[]) {
     int roll_number;
-    int marks[5];
+    struct SubjectGrades marks[5];
 
-    if (argument_count != 11) {
-        print_error_message("Usage: add_grades <course> <section> <exam_type> <roll> <s1> <s2> <s3> <s4> <s5>");
+    if (argument_count != 21) {
+        print_error_message("Usage: add_grades <course> <section> <exam_type> <roll> <t1> <p1> <i1> <t2> <p2> <i2> <t3> <p3> <i3> <t4> <p4> <i4> <t5> <p5> <i5>");
         return 1;
     }
 
@@ -325,9 +339,11 @@ int command_add_grades(int argument_count, char *argument_values[]) {
         return 1;
     }
 
-    for (int i = 0; i < 5; i++) {
-        marks[i] = atoi(argument_values[6 + i]);
-    }
+    marks[0].theory = atoi(argument_values[6]); marks[0].practical = atoi(argument_values[7]); marks[0].internal = atoi(argument_values[8]);
+    marks[1].theory = atoi(argument_values[9]); marks[1].practical = atoi(argument_values[10]); marks[1].internal = atoi(argument_values[11]);
+    marks[2].theory = atoi(argument_values[12]); marks[2].practical = atoi(argument_values[13]); marks[2].internal = atoi(argument_values[14]);
+    marks[3].theory = atoi(argument_values[15]); marks[3].practical = atoi(argument_values[16]); marks[3].internal = atoi(argument_values[17]);
+    marks[4].theory = atoi(argument_values[18]); marks[4].practical = atoi(argument_values[19]); marks[4].internal = atoi(argument_values[20]);
 
     if (!save_student_grades(argument_values[2], argument_values[3], roll_number, argument_values[4], marks)) {
         print_error_message("Could not save grades");
@@ -372,19 +388,23 @@ int command_get_report(int argument_count, char *argument_values[]) {
             (double)student_attendance_summary.classes_held;
     }
 
-    int mid_marks[5], end_marks[5];
+    struct SubjectGrades mid_marks[5], end_marks[5];
+    float sgpa;
+    int passed, failed;
+    char overall_grade;
     get_student_grades(argument_values[2], argument_values[3], roll_number_to_search, mid_marks, end_marks);
-    float sgpa = calculate_sgpa(mid_marks, end_marks);
+    calculate_student_grade_stats(mid_marks, end_marks, &sgpa, &passed, &failed, &overall_grade);
 
     printf(
-        "%d|%s|%d|%d|%d|%.2f|%.2f\n",
+        "%d|%s|%d|%d|%d|%.2f|%.2f|%c\n",
         all_students[found_student_index].roll_number,
         all_students[found_student_index].name,
         student_attendance_summary.classes_held,
         student_attendance_summary.present_count,
         student_attendance_summary.absent_count,
         attendance_percentage,
-        sgpa
+        sgpa,
+        overall_grade
     );
 
     return 0;
@@ -415,19 +435,23 @@ int command_get_overall(int argument_count, char *argument_values[]) {
                 (double)current_student_summary.classes_held;
         }
 
-        int mid_marks[5], end_marks[5];
+        struct SubjectGrades mid_marks[5], end_marks[5];
+        float sgpa;
+        int passed, failed;
+        char overall_grade;
         get_student_grades(argument_values[2], argument_values[3], all_students[student_index].roll_number, mid_marks, end_marks);
-        float sgpa = calculate_sgpa(mid_marks, end_marks);
+        calculate_student_grade_stats(mid_marks, end_marks, &sgpa, &passed, &failed, &overall_grade);
 
         printf(
-            "%d|%s|%d|%d|%d|%.2f|%.2f\n",
+            "%d|%s|%d|%d|%d|%.2f|%.2f|%c\n",
             all_students[student_index].roll_number,
             all_students[student_index].name,
             current_student_summary.classes_held,
             current_student_summary.present_count,
             current_student_summary.absent_count,
             attendance_percentage,
-            sgpa
+            sgpa,
+            overall_grade
         );
     }
 

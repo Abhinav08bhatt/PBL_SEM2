@@ -10,12 +10,18 @@ python_gui_folder_path = os.path.abspath(os.path.dirname(__file__))
 c_core_folder_path = os.path.abspath(os.path.join(python_gui_folder_path, "..", "c_core"))
 backend_binary_full_path = os.path.join(python_gui_folder_path, "backend_app")
 
+SUBJECTS = [
+    "Mathematical foundation of computer science",
+    "Programing for problem solving",
+    "Introduction to object oriented programing using c++",
+    "Digital electronics",
+    "Introduction to data science"
+]
 
 def build_backend_if_needed():
     if os.path.exists(backend_binary_full_path):
         return
 
-    # Build the small C backend if it is not already built.
     compile_command = [
         "gcc",
         "-std=c99",
@@ -76,7 +82,7 @@ class AttendanceApp(tk.Tk):
         super().__init__()
 
         self.title("Student Attendance GUI")
-        self.geometry("980x680")
+        self.geometry("1100x800")
 
         self.student_rows = []
         self.status_box_by_roll_number = {}
@@ -207,69 +213,194 @@ class AttendanceApp(tk.Tk):
         )
 
     def create_grades_tab(self):
-        form_frame = ttk.Frame(self.grades_tab)
-        form_frame.pack(fill="x", padx=10, pady=10)
-
-        ttk.Label(form_frame, text="Student:").grid(row=0, column=0, sticky="w", pady=5)
-        self.grades_student_cb = ttk.Combobox(form_frame, width=40, state="readonly")
-        self.grades_student_cb.grid(row=0, column=1, padx=5, pady=5, columnspan=3)
-
-        ttk.Label(form_frame, text="Exam Type:").grid(row=1, column=0, sticky="w", pady=5)
-        self.grades_exam_cb = ttk.Combobox(form_frame, values=["MID", "END"], width=10, state="readonly")
-        self.grades_exam_cb.current(0)
-        self.grades_exam_cb.grid(row=1, column=1, padx=5, pady=5, sticky="w")
+        self.grades_canvas = tk.Canvas(self.grades_tab)
+        self.grades_scrollbar = ttk.Scrollbar(self.grades_tab, orient="vertical", command=self.grades_canvas.yview)
         
-        ttk.Button(form_frame, text="Load Grades", command=self.load_student_grades).grid(row=1, column=2, padx=5, pady=5)
+        self.grades_scrollable_frame = ttk.Frame(self.grades_canvas)
+        
+        self.grades_scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.grades_canvas.configure(
+                scrollregion=self.grades_canvas.bbox("all")
+            )
+        )
 
-        self.grades_entries = []
-        for i in range(5):
-            ttk.Label(form_frame, text=f"Subject {i+1}:").grid(row=2+i, column=0, sticky="w", pady=2)
-            entry = ttk.Entry(form_frame, width=10)
-            entry.insert(0, "0")
-            entry.grid(row=2+i, column=1, sticky="w", padx=5, pady=2)
-            self.grades_entries.append(entry)
+        self.grades_canvas.create_window((0, 0), window=self.grades_scrollable_frame, anchor="nw")
+        self.grades_canvas.configure(yscrollcommand=self.grades_scrollbar.set)
+        
+        self.grades_canvas.pack(side="left", fill="both", expand=True)
+        self.grades_scrollbar.pack(side="right", fill="y")
 
-        ttk.Button(form_frame, text="Save Grades", command=self.save_student_grades).grid(row=7, column=1, pady=15, sticky="w")
+        # Top Controls
+        top_controls = ttk.Frame(self.grades_scrollable_frame)
+        top_controls.pack(fill="x", padx=10, pady=10)
+        
+        ttk.Label(top_controls, text="Roll Number:").grid(row=0, column=0, sticky="w", pady=5)
+        self.grades_student_cb = ttk.Combobox(top_controls, width=10, state="readonly")
+        self.grades_student_cb.grid(row=0, column=1, padx=5, pady=5)
+        self.grades_student_cb.bind("<<ComboboxSelected>>", self.on_grades_roll_selected)
+
+        ttk.Label(top_controls, text="Name:").grid(row=0, column=2, sticky="w", padx=10, pady=5)
+        self.grades_name_label = ttk.Label(top_controls, text="[Select a roll number]")
+        self.grades_name_label.grid(row=0, column=3, sticky="w", pady=5)
+
+        ttk.Button(top_controls, text="Load Grades", command=self.load_student_grades).grid(row=0, column=4, padx=20)
+
+        # Mid Sem Table
+        mid_frame = ttk.LabelFrame(self.grades_scrollable_frame, text="Mid Semester Table")
+        mid_frame.pack(fill="x", padx=10, pady=10)
+        self.mid_entries = self.build_grades_table(mid_frame)
+
+        # End Sem Table
+        end_frame = ttk.LabelFrame(self.grades_scrollable_frame, text="End Semester Table")
+        end_frame.pack(fill="x", padx=10, pady=10)
+        self.end_entries = self.build_grades_table(end_frame)
+
+        # Stats & Save
+        stats_frame = ttk.Frame(self.grades_scrollable_frame)
+        stats_frame.pack(fill="x", padx=10, pady=10)
+        
+        self.lbl_passed = ttk.Label(stats_frame, text="Number of Subjects Passed: -")
+        self.lbl_passed.grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        
+        self.lbl_failed = ttk.Label(stats_frame, text="Number of Subjects Failed: -")
+        self.lbl_failed.grid(row=1, column=0, sticky="w", padx=5, pady=2)
+        
+        self.lbl_grade = ttk.Label(stats_frame, text="Overall Grade: -")
+        self.lbl_grade.grid(row=2, column=0, sticky="w", padx=5, pady=2)
+        
+        self.lbl_sgpa = ttk.Label(stats_frame, text="SGPA: -")
+        self.lbl_sgpa.grid(row=3, column=0, sticky="w", padx=5, pady=2)
+
+        ttk.Button(stats_frame, text="Save Both Semesters", command=self.save_all_grades).grid(row=0, column=1, rowspan=4, padx=40)
+
+    def build_grades_table(self, parent_frame):
+        headers = ["Subject Name", "Theory (max 50)", "Practical (max 25)", "Internal (max 25)", "Max Marks", "Total Marks"]
+        for col, text in enumerate(headers):
+            ttk.Label(parent_frame, text=text, font=("", 10, "bold")).grid(row=0, column=col, padx=5, pady=5)
+
+        entries = []
+        for row, subject in enumerate(SUBJECTS):
+            row_idx = row + 1
+            ttk.Label(parent_frame, text=subject).grid(row=row_idx, column=0, sticky="w", padx=5, pady=2)
+            
+            t_entry = ttk.Entry(parent_frame, width=8)
+            t_entry.insert(0, "0")
+            t_entry.grid(row=row_idx, column=1, padx=5, pady=2)
+            t_entry.bind("<KeyRelease>", self.update_totals)
+            
+            p_entry = ttk.Entry(parent_frame, width=8)
+            p_entry.insert(0, "0")
+            p_entry.grid(row=row_idx, column=2, padx=5, pady=2)
+            p_entry.bind("<KeyRelease>", self.update_totals)
+            
+            i_entry = ttk.Entry(parent_frame, width=8)
+            i_entry.insert(0, "0")
+            i_entry.grid(row=row_idx, column=3, padx=5, pady=2)
+            i_entry.bind("<KeyRelease>", self.update_totals)
+            
+            ttk.Label(parent_frame, text="100").grid(row=row_idx, column=4, padx=5, pady=2)
+            
+            total_lbl = ttk.Label(parent_frame, text="0")
+            total_lbl.grid(row=row_idx, column=5, padx=5, pady=2)
+            
+            entries.append({"T": t_entry, "P": p_entry, "I": i_entry, "Total": total_lbl})
+            
+        return entries
+
+    def update_totals(self, event=None):
+        def safe_int(val):
+            try: return int(val)
+            except: return 0
+
+        for row in self.mid_entries + self.end_entries:
+            t = safe_int(row["T"].get())
+            p = safe_int(row["P"].get())
+            i = safe_int(row["I"].get())
+            row["Total"].config(text=str(t+p+i))
+
+    def on_grades_roll_selected(self, event):
+        roll = self.grades_student_cb.get()
+        for r, name in self.student_rows:
+            if str(r) == roll:
+                self.grades_name_label.config(text=name)
+                break
 
     def refresh_grades_student_list(self):
-        values = [f"{roll} - {name}" for roll, name in self.student_rows]
+        values = [str(roll) for roll, name in self.student_rows]
         self.grades_student_cb["values"] = values
         if values:
             self.grades_student_cb.current(0)
+            self.on_grades_roll_selected(None)
         else:
             self.grades_student_cb.set("")
+            self.grades_name_label.config(text="[Select a roll number]")
 
     def load_student_grades(self):
         if not self.ensure_section_loaded(): return
-        selection = self.grades_student_cb.get()
-        if not selection: return
-        roll = selection.split(" - ")[0]
+        roll = self.grades_student_cb.get()
+        if not roll: return
         
         try:
             backend_output = run_backend_command("get_grades", self.current_course, self.current_section, roll)
-            marks = backend_output.split("|")
-            exam_type = self.grades_exam_cb.get()
-            offset = 0 if exam_type == "MID" else 5
+            parts = backend_output.split("|")
+            
+            # Mid marks (0-14)
             for i in range(5):
-                self.grades_entries[i].delete(0, tk.END)
-                self.grades_entries[i].insert(0, marks[offset + i])
+                self.mid_entries[i]["T"].delete(0, tk.END)
+                self.mid_entries[i]["T"].insert(0, parts[i*3 + 0])
+                self.mid_entries[i]["P"].delete(0, tk.END)
+                self.mid_entries[i]["P"].insert(0, parts[i*3 + 1])
+                self.mid_entries[i]["I"].delete(0, tk.END)
+                self.mid_entries[i]["I"].insert(0, parts[i*3 + 2])
+                
+            # End marks (15-29)
+            offset = 15
+            for i in range(5):
+                self.end_entries[i]["T"].delete(0, tk.END)
+                self.end_entries[i]["T"].insert(0, parts[offset + i*3 + 0])
+                self.end_entries[i]["P"].delete(0, tk.END)
+                self.end_entries[i]["P"].insert(0, parts[offset + i*3 + 1])
+                self.end_entries[i]["I"].delete(0, tk.END)
+                self.end_entries[i]["I"].insert(0, parts[offset + i*3 + 2])
+                
+            self.update_totals()
+
+            passed = parts[30]
+            failed = parts[31]
+            grade = parts[32]
+            sgpa = parts[33]
+
+            self.lbl_passed.config(text=f"Number of Subjects Passed: {passed}")
+            self.lbl_failed.config(text=f"Number of Subjects Failed: {failed}")
+            self.lbl_grade.config(text=f"Overall Grade: {grade}")
+            if grade == '-':
+                self.lbl_sgpa.config(text="SGPA: -")
+            else:
+                self.lbl_sgpa.config(text=f"SGPA: {sgpa}")
+            
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
-    def save_student_grades(self):
+    def save_all_grades(self):
         if not self.ensure_section_loaded(): return
-        selection = self.grades_student_cb.get()
-        if not selection: return
-        roll = selection.split(" - ")[0]
-        exam_type = self.grades_exam_cb.get()
+        roll = self.grades_student_cb.get()
+        if not roll: return
         
         try:
-            marks = [e.get().strip() for e in self.grades_entries]
-            for m in marks:
-                if not m.isdigit(): raise ValueError("Marks must be numbers")
+            mid_args = []
+            for row in self.mid_entries:
+                mid_args.extend([row["T"].get().strip() or "0", row["P"].get().strip() or "0", row["I"].get().strip() or "0"])
             
-            run_backend_command("add_grades", self.current_course, self.current_section, exam_type, roll, *marks)
-            messagebox.showinfo("Success", "Grades saved")
+            end_args = []
+            for row in self.end_entries:
+                end_args.extend([row["T"].get().strip() or "0", row["P"].get().strip() or "0", row["I"].get().strip() or "0"])
+            
+            run_backend_command("add_grades", self.current_course, self.current_section, "MID", roll, *mid_args)
+            run_backend_command("add_grades", self.current_course, self.current_section, "END", roll, *end_args)
+            
+            messagebox.showinfo("Success", "Grades saved for both semesters.")
+            self.load_student_grades() # Reload to calculate stats
             self.refresh_overall_report_table()
         except Exception as e:
             messagebox.showerror("Error", str(e))
@@ -290,7 +421,7 @@ class AttendanceApp(tk.Tk):
 
         self.overall_report_table = ttk.Treeview(
             self.reports_tab,
-            columns=("roll", "name", "classes", "present", "absent", "percent", "sgpa"),
+            columns=("roll", "name", "classes", "present", "absent", "percent", "sgpa", "grade"),
             show="headings",
             height=16,
         )
@@ -301,6 +432,7 @@ class AttendanceApp(tk.Tk):
         self.overall_report_table.heading("absent", text="Absent")
         self.overall_report_table.heading("percent", text="Percent")
         self.overall_report_table.heading("sgpa", text="SGPA")
+        self.overall_report_table.heading("grade", text="Grade")
 
         self.overall_report_table.column("roll", width=60, anchor="center")
         self.overall_report_table.column("name", width=200)
@@ -309,6 +441,7 @@ class AttendanceApp(tk.Tk):
         self.overall_report_table.column("absent", width=60, anchor="center")
         self.overall_report_table.column("percent", width=60, anchor="center")
         self.overall_report_table.column("sgpa", width=60, anchor="center")
+        self.overall_report_table.column("grade", width=60, anchor="center")
         self.overall_report_table.pack(fill="both", expand=True, padx=10, pady=10)
 
     def refresh_students_table(self):
@@ -469,7 +602,7 @@ class AttendanceApp(tk.Tk):
 
         report_parts = backend_output_text.split("|")
 
-        if len(report_parts) != 7:
+        if len(report_parts) != 8:
             messagebox.showerror("Report Failed", "Unexpected backend format")
             return
 
@@ -481,6 +614,7 @@ class AttendanceApp(tk.Tk):
         readable_report_text += f"Absent: {report_parts[4]}\n"
         readable_report_text += f"Attendance: {report_parts[5]}%\n"
         readable_report_text += f"SGPA: {report_parts[6]}\n"
+        readable_report_text += f"Overall Grade: {report_parts[7]}\n"
 
         self.single_student_report_text.delete("1.0", tk.END)
         self.single_student_report_text.insert(tk.END, readable_report_text)
@@ -500,7 +634,7 @@ class AttendanceApp(tk.Tk):
 
         for each_line_text in backend_output_text.splitlines():
             split_parts = each_line_text.split("|")
-            if len(split_parts) == 7:
+            if len(split_parts) == 8:
                 self.overall_report_table.insert("", "end", values=split_parts)
 
 
