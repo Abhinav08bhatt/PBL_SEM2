@@ -1,6 +1,5 @@
 <div align="center">
   <h1>🎓 Student ERP & Attendance Management System</h1>
-  <p><i>A robust, file-based C backend seamlessly integrated with a dynamic Python GUI.</i></p>
 </div>
 
 ---
