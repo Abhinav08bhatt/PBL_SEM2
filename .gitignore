@@ -104,6 +104,11 @@ config.local.*
 CODE/**/*.o
 CODE/**/*.out
 
+# Ignore compiled outputs in main if any
+
+*.o
+*.out
+
 # =========================
 
 # 🚫 DO NOT IGNORE THESE
@@ -113,7 +118,6 @@ CODE/**/*.out
 # (Make sure these stay tracked)
 
 !CODE/
+!DOCS/
 !main.c
 !README.md
-!CHANGElog.md
-!gitRULES.md

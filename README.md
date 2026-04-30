@@ -7,10 +7,10 @@
 ## 📖 About the Project
 
 This project was developed for **PBL SEM 2** under the subject **Programming for Problem Solving**. 
-It features a dual-layered architecture: a high-performance C Engine that safely manages native file I/O operations, seamlessly bridged to an interactive Python Tkinter interface. The system acts as a fully-featured ERP, handling isolated student enrollment, multi-component grading, real-time SGPA calculations, and date-stamped attendance tracking.
+It features a dual-layered architecture: a C logic engine that safely manages native file I/O operations, bridged to an interactive Python Tkinter interface. The system acts as a fully-featured ERP, handling isolated student enrollment, multi-component grading, real-time SGPA calculations, and date-stamped attendance tracking.
 
-**Mentor:** Ms. Ayushi Dwivedi  
-**Topic:** Student ERP and Attendance Management System  
+### **Mentor:** Ms. Ayushi Dwivedi  
+### **Topic:** Student ERP and Attendance Management System  
 
 ---
 
@@ -27,8 +27,8 @@ It features a dual-layered architecture: a high-performance C Engine that safely
 ## 🚀 Project Phases
 
 - [x] **Phase 1:** Core C Backend Architecture & File Isolation
-- [x] **Phase 2:** Python GUI Integration, Live Calculations & Complex Grading System
-- [ ] **Phase 3:** Final Polish & Presentation Prep
+- [x] **Phase 2:** CLI system using C only files for logic
+- [_] **Phase 3:** Python GUI Integration and extending C logic and features
 
 ---
 
