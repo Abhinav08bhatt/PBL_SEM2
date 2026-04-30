@@ -5,6 +5,7 @@
 
 #include "../c_core/student.h"
 #include "../c_core/attendance.h"
+#include "../c_core/grades.h"
 
 void print_error_message(const char *message_text) {
     printf("ERR|%s\n", message_text);
@@ -288,6 +289,55 @@ int command_mark_attendance(int argument_count, char *argument_values[]) {
     return 0;
 }
 
+int command_get_grades(int argument_count, char *argument_values[]) {
+    int roll_number;
+    int mid_marks[5];
+    int end_marks[5];
+
+    if (argument_count != 5) {
+        print_error_message("Usage: get_grades <course> <section> <roll>");
+        return 1;
+    }
+
+    if (!convert_text_to_positive_roll_number(argument_values[4], &roll_number)) {
+        print_error_message("Invalid roll number");
+        return 1;
+    }
+
+    get_student_grades(argument_values[2], argument_values[3], roll_number, mid_marks, end_marks);
+    printf("%d|%d|%d|%d|%d|%d|%d|%d|%d|%d\n", 
+           mid_marks[0], mid_marks[1], mid_marks[2], mid_marks[3], mid_marks[4],
+           end_marks[0], end_marks[1], end_marks[2], end_marks[3], end_marks[4]);
+    return 0;
+}
+
+int command_add_grades(int argument_count, char *argument_values[]) {
+    int roll_number;
+    int marks[5];
+
+    if (argument_count != 11) {
+        print_error_message("Usage: add_grades <course> <section> <exam_type> <roll> <s1> <s2> <s3> <s4> <s5>");
+        return 1;
+    }
+
+    if (!convert_text_to_positive_roll_number(argument_values[5], &roll_number)) {
+        print_error_message("Invalid roll number");
+        return 1;
+    }
+
+    for (int i = 0; i < 5; i++) {
+        marks[i] = atoi(argument_values[6 + i]);
+    }
+
+    if (!save_student_grades(argument_values[2], argument_values[3], roll_number, argument_values[4], marks)) {
+        print_error_message("Could not save grades");
+        return 1;
+    }
+
+    print_ok_message("Grades saved");
+    return 0;
+}
+
 int command_get_report(int argument_count, char *argument_values[]) {
     struct StudentRecord all_students[MAX_SECTION_STUDENTS];
     struct AttendanceSummary student_attendance_summary;
@@ -322,14 +372,19 @@ int command_get_report(int argument_count, char *argument_values[]) {
             (double)student_attendance_summary.classes_held;
     }
 
+    int mid_marks[5], end_marks[5];
+    get_student_grades(argument_values[2], argument_values[3], roll_number_to_search, mid_marks, end_marks);
+    float sgpa = calculate_sgpa(mid_marks, end_marks);
+
     printf(
-        "%d|%s|%d|%d|%d|%.2f\n",
+        "%d|%s|%d|%d|%d|%.2f|%.2f\n",
         all_students[found_student_index].roll_number,
         all_students[found_student_index].name,
         student_attendance_summary.classes_held,
         student_attendance_summary.present_count,
         student_attendance_summary.absent_count,
-        attendance_percentage
+        attendance_percentage,
+        sgpa
     );
 
     return 0;
@@ -360,14 +415,19 @@ int command_get_overall(int argument_count, char *argument_values[]) {
                 (double)current_student_summary.classes_held;
         }
 
+        int mid_marks[5], end_marks[5];
+        get_student_grades(argument_values[2], argument_values[3], all_students[student_index].roll_number, mid_marks, end_marks);
+        float sgpa = calculate_sgpa(mid_marks, end_marks);
+
         printf(
-            "%d|%s|%d|%d|%d|%.2f\n",
+            "%d|%s|%d|%d|%d|%.2f|%.2f\n",
             all_students[student_index].roll_number,
             all_students[student_index].name,
             current_student_summary.classes_held,
             current_student_summary.present_count,
             current_student_summary.absent_count,
-            attendance_percentage
+            attendance_percentage,
+            sgpa
         );
     }
 
@@ -402,6 +462,14 @@ int main(int argument_count, char *argument_values[]) {
 
     if (strcmp(argument_values[1], "get_overall") == 0) {
         return command_get_overall(argument_count, argument_values);
+    }
+
+    if (strcmp(argument_values[1], "get_grades") == 0) {
+        return command_get_grades(argument_count, argument_values);
+    }
+
+    if (strcmp(argument_values[1], "add_grades") == 0) {
+        return command_add_grades(argument_count, argument_values);
     }
 
     print_error_message("Unknown command");

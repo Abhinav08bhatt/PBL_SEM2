@@ -24,6 +24,7 @@ def build_backend_if_needed():
         os.path.join(python_gui_folder_path, "backend_api.c"),
         os.path.join(c_core_folder_path, "student.c"),
         os.path.join(c_core_folder_path, "attendance.c"),
+        os.path.join(c_core_folder_path, "grades.c"),
         "-o",
         backend_binary_full_path,
     ]
@@ -90,14 +91,17 @@ class AttendanceApp(tk.Tk):
 
         self.students_tab = ttk.Frame(self.notebook)
         self.attendance_tab = ttk.Frame(self.notebook)
+        self.grades_tab = ttk.Frame(self.notebook)
         self.reports_tab = ttk.Frame(self.notebook)
 
         self.notebook.add(self.students_tab, text="Students")
         self.notebook.add(self.attendance_tab, text="Attendance")
+        self.notebook.add(self.grades_tab, text="Grades")
         self.notebook.add(self.reports_tab, text="Reports")
 
         self.create_students_tab()
         self.create_attendance_tab()
+        self.create_grades_tab()
         self.create_reports_tab()
 
     def create_global_controls(self):
@@ -202,6 +206,75 @@ class AttendanceApp(tk.Tk):
             ),
         )
 
+    def create_grades_tab(self):
+        form_frame = ttk.Frame(self.grades_tab)
+        form_frame.pack(fill="x", padx=10, pady=10)
+
+        ttk.Label(form_frame, text="Student:").grid(row=0, column=0, sticky="w", pady=5)
+        self.grades_student_cb = ttk.Combobox(form_frame, width=40, state="readonly")
+        self.grades_student_cb.grid(row=0, column=1, padx=5, pady=5, columnspan=3)
+
+        ttk.Label(form_frame, text="Exam Type:").grid(row=1, column=0, sticky="w", pady=5)
+        self.grades_exam_cb = ttk.Combobox(form_frame, values=["MID", "END"], width=10, state="readonly")
+        self.grades_exam_cb.current(0)
+        self.grades_exam_cb.grid(row=1, column=1, padx=5, pady=5, sticky="w")
+        
+        ttk.Button(form_frame, text="Load Grades", command=self.load_student_grades).grid(row=1, column=2, padx=5, pady=5)
+
+        self.grades_entries = []
+        for i in range(5):
+            ttk.Label(form_frame, text=f"Subject {i+1}:").grid(row=2+i, column=0, sticky="w", pady=2)
+            entry = ttk.Entry(form_frame, width=10)
+            entry.insert(0, "0")
+            entry.grid(row=2+i, column=1, sticky="w", padx=5, pady=2)
+            self.grades_entries.append(entry)
+
+        ttk.Button(form_frame, text="Save Grades", command=self.save_student_grades).grid(row=7, column=1, pady=15, sticky="w")
+
+    def refresh_grades_student_list(self):
+        values = [f"{roll} - {name}" for roll, name in self.student_rows]
+        self.grades_student_cb["values"] = values
+        if values:
+            self.grades_student_cb.current(0)
+        else:
+            self.grades_student_cb.set("")
+
+    def load_student_grades(self):
+        if not self.ensure_section_loaded(): return
+        selection = self.grades_student_cb.get()
+        if not selection: return
+        roll = selection.split(" - ")[0]
+        
+        try:
+            backend_output = run_backend_command("get_grades", self.current_course, self.current_section, roll)
+            marks = backend_output.split("|")
+            exam_type = self.grades_exam_cb.get()
+            offset = 0 if exam_type == "MID" else 5
+            for i in range(5):
+                self.grades_entries[i].delete(0, tk.END)
+                self.grades_entries[i].insert(0, marks[offset + i])
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+    def save_student_grades(self):
+        if not self.ensure_section_loaded(): return
+        selection = self.grades_student_cb.get()
+        if not selection: return
+        roll = selection.split(" - ")[0]
+        exam_type = self.grades_exam_cb.get()
+        
+        try:
+            marks = [e.get().strip() for e in self.grades_entries]
+            for m in marks:
+                if not m.isdigit(): raise ValueError("Marks must be numbers")
+            
+            run_backend_command("add_grades", self.current_course, self.current_section, exam_type, roll, *marks)
+            messagebox.showinfo("Success", "Grades saved")
+            self.refresh_overall_report_table()
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+
     def create_reports_tab(self):
         top_controls_frame = ttk.Frame(self.reports_tab)
         top_controls_frame.pack(fill="x", padx=10, pady=10)
@@ -212,12 +285,12 @@ class AttendanceApp(tk.Tk):
 
         ttk.Button(top_controls_frame, text="Get Student Report", command=self.get_student_report).pack(side="left", padx=6)
 
-        self.single_student_report_text = tk.Text(self.reports_tab, height=7)
+        self.single_student_report_text = tk.Text(self.reports_tab, height=8)
         self.single_student_report_text.pack(fill="x", padx=10, pady=(0, 10))
 
         self.overall_report_table = ttk.Treeview(
             self.reports_tab,
-            columns=("roll", "name", "classes", "present", "absent", "percent"),
+            columns=("roll", "name", "classes", "present", "absent", "percent", "sgpa"),
             show="headings",
             height=16,
         )
@@ -227,13 +300,15 @@ class AttendanceApp(tk.Tk):
         self.overall_report_table.heading("present", text="Present")
         self.overall_report_table.heading("absent", text="Absent")
         self.overall_report_table.heading("percent", text="Percent")
+        self.overall_report_table.heading("sgpa", text="SGPA")
 
-        self.overall_report_table.column("roll", width=80, anchor="center")
-        self.overall_report_table.column("name", width=250)
-        self.overall_report_table.column("classes", width=80, anchor="center")
-        self.overall_report_table.column("present", width=80, anchor="center")
-        self.overall_report_table.column("absent", width=80, anchor="center")
-        self.overall_report_table.column("percent", width=80, anchor="center")
+        self.overall_report_table.column("roll", width=60, anchor="center")
+        self.overall_report_table.column("name", width=200)
+        self.overall_report_table.column("classes", width=60, anchor="center")
+        self.overall_report_table.column("present", width=60, anchor="center")
+        self.overall_report_table.column("absent", width=60, anchor="center")
+        self.overall_report_table.column("percent", width=60, anchor="center")
+        self.overall_report_table.column("sgpa", width=60, anchor="center")
         self.overall_report_table.pack(fill="both", expand=True, padx=10, pady=10)
 
     def refresh_students_table(self):
@@ -260,6 +335,7 @@ class AttendanceApp(tk.Tk):
             self.students_table.insert("", "end", values=each_student_row)
 
         self.build_attendance_form()
+        self.refresh_grades_student_list()
 
     def add_student(self):
         if not self.ensure_section_loaded():
@@ -393,7 +469,7 @@ class AttendanceApp(tk.Tk):
 
         report_parts = backend_output_text.split("|")
 
-        if len(report_parts) != 6:
+        if len(report_parts) != 7:
             messagebox.showerror("Report Failed", "Unexpected backend format")
             return
 
@@ -404,6 +480,7 @@ class AttendanceApp(tk.Tk):
         readable_report_text += f"Present: {report_parts[3]}\n"
         readable_report_text += f"Absent: {report_parts[4]}\n"
         readable_report_text += f"Attendance: {report_parts[5]}%\n"
+        readable_report_text += f"SGPA: {report_parts[6]}\n"
 
         self.single_student_report_text.delete("1.0", tk.END)
         self.single_student_report_text.insert(tk.END, readable_report_text)
@@ -423,7 +500,7 @@ class AttendanceApp(tk.Tk):
 
         for each_line_text in backend_output_text.splitlines():
             split_parts = each_line_text.split("|")
-            if len(split_parts) == 6:
+            if len(split_parts) == 7:
                 self.overall_report_table.insert("", "end", values=split_parts)
 
 
