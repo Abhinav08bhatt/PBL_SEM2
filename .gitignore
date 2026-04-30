@@ -104,6 +104,8 @@ config.local.*
 CODE/**/*.o
 CODE/**/*.out
 
+# =========================
+
 # Ignore compiled outputs in main if any
 
 *.o
