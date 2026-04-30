@@ -1,11 +1,6 @@
-# .gitignore for ERP (C + Python)
-
 # =========================
-
 # 🔧 C / Compilation Files
-
 # =========================
-
 *.o
 *.out
 *.exe
@@ -13,113 +8,57 @@
 *.so
 *.dll
 
-# =========================
+# Executables (no extension)
+main
+app
+menu
+menu_app
+backend_app
 
-# 📜 Data Files
-
-# =========================
-
-
-
-# Common build directories
-
+# Build directories
 build/
 bin/
 dist/
 
 # =========================
-
-# 🐍 Python Files
-
+# 🐍 Python
 # =========================
-
-**pycache**/
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# Virtual environments
 
 venv/
 env/
 .venv/
 
 # =========================
-
-# 🖥️ IDE / Editor Files
-
+# 🖥️ IDE
 # =========================
-
 .vscode/
 .idea/
-*.code-workspace
 
 # =========================
-
-# 💻 OS Files
-
+# OS junk
 # =========================
-
-# Linux
-
-*~
-
-# macOS
-
 .DS_Store
-
-# Windows
-
 Thumbs.db
-desktop.ini
 
 # =========================
-
-# 📜 Logs / Temp Files
-
+# Logs / temp
 # =========================
-
 *.log
 *.tmp
 *.swp
 
 # =========================
-
-# 🔐 Environment / Secrets
-
+# Secrets
 # =========================
-
 .env
 .env.*
-config.local.*
 
 # =========================
-
-# ⚠️ Git / Project Specific
-
+# Project-specific
 # =========================
-
-# Ignore compiled outputs inside CODE if any
-
 CODE/**/*.o
 CODE/**/*.out
-
-# =========================
-
-# Ignore compiled outputs in main if any
-
-*.o
-*.out
-
-# =========================
-
-# 🚫 DO NOT IGNORE THESE
-
-# =========================
-
-# (Make sure these stay tracked)
-
-!CODE/
-!DOCS/
-!main.c
-!README.md
