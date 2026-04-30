@@ -97,7 +97,18 @@ Here is exactly what the code is doing behind the scenes.
 
 ---
 
-## 🌉 5. The Bridge (Inside `backend_api.c`)
+## 📈 5. The Advanced Grades System (Inside `grades.c`)
+
+We heavily upgraded our system to natively track an extremely complex academic grading structure.
+
+- **The Multi-Component Hierarchy:** A single student takes multiple exams (Mid-Sem, End-Sem). Each exam contains 5 subjects. Every single subject consists of 3 distinct components (Theory, Practical, Internal). This means we have to parse and process **30 individual integers per student**!
+- **Data Structuring (`struct SubjectGrades`):** Instead of storing loose integers, we grouped them perfectly into nested structs in `grades.h`. This object-oriented-like approach in C keeps our memory exceptionally clean.
+- **`calculate_student_grade_stats()`**: This function is the mathematical engine. It takes the 30 raw integer inputs, mathematically combines them (scaling 200 marks down to a 100% scale per subject), checks them against the 40% passing threshold, and strictly maps them to a 10-point GPA scale to generate an accurate SGPA and alphabetical Overall Grade (A, B, C, D, E, F).
+- **On-The-Fly Generation:** *We purposely do not save the SGPA to the text file.* We only save the raw numbers. Why? If a teacher updates a typo in the Mid-Sem Practical marks, we want the SGPA to automatically recalculate correctly. If we saved the SGPA text string permanently, it would risk falling out of sync. By forcing `backend_api.c` to run the math dynamically every single time a report is requested, we guarantee absolute data integrity.
+
+---
+
+## 🌉 6. The Bridge (Inside `backend_api.c`)
 
 Python doesn't speak C natively. So we built `backend_api.c` as a command-line translator.
 - **What it does:** It is a standalone C program that acts as the middleman. It takes text commands sent by Python as arguments (like `./backend_app add_student BSc_CS A 12 Rahul`) and triggers the actual C functions from `student.c`.
@@ -105,7 +116,7 @@ Python doesn't speak C natively. So we built `backend_api.c` as a command-line t
 
 ---
 
-## 💻 6. The Python GUI (The Face - inside `app.py`)
+## 💻 7. The Python GUI (The Face - inside `app.py`)
 
 The `app.py` file is what the user actually interacts with. It uses `tkinter`, Python's built-in GUI library.
 
@@ -123,7 +134,7 @@ The `app.py` file is what the user actually interacts with. It uses `tkinter`, P
 
 ---
 
-## 🙋‍♂️ 7. Common Viva Questions & How to Answer Them
+## 🙋‍♂️ 8. Common Viva Questions & How to Answer Them
 
 **Q: Why didn't you use a database like SQL?**
 > *"Since this is a foundational C project, we wanted to demonstrate our understanding of native File I/O (Input/Output) in C. Managing text files manually proves we understand how to open, read, write, and manipulate data streams using `fopen`, `fprintf`, and `fgets` without relying on heavy external software."*

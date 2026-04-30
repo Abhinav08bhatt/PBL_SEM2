@@ -4,6 +4,16 @@ This guide is designed for your Viva preparation. It breaks down the exact logic
 
 ---
 
+## 0. The Header File: `student.h`
+
+Before we dive into the `student.c` logic, let's understand the `student.h` header file. In C, header files act as the "Table of Contents" or the "Blueprint".
+- **Include Guards (`#ifndef STUDENT_H`)**: At the very top, we use "include guards". This prevents the compiler from accidentally loading the blueprint twice, which would cause a compilation error.
+- **Macros (`#define`)**: We define constant system limits like `MAX_NAME_LENGTH 100` and `MAX_SECTION_STUDENTS 20`. Defining these centrally is excellent practice—if we ever want to increase class size to 30, we only change it in one place!
+- **`struct StudentRecord`**: This is where we literally design what a "student" looks like in the computer's RAM. We declare that every student has an `int roll_number` and a `char name[MAX_NAME_LENGTH]`.
+- **Function Prototypes**: We list out the names and exact parameters of every function (like `load_students_from_file`). This tells the compiler, "Hey, these functions exist, trust me, you'll find their actual code later." This allows other files to use these functions securely.
+
+---
+
 ## 1. The Core Idea: Managing Data in RAM vs. Hard Drive
 In C, reading from and writing to text files continuously is slow and error-prone. 
 To make our program fast and safe, we use the **"Load -> Modify -> Save"** pattern.

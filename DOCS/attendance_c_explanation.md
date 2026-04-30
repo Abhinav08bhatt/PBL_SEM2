@@ -4,6 +4,15 @@ This guide explains the inner workings of `attendance.c`. While `student.c` mana
 
 ---
 
+## 0. The Header File: `attendance.h`
+
+The `attendance.h` file serves as the strict blueprint for our attendance tracking logic.
+- **Includes**: It safely includes `student.h` because the attendance system relies heavily on the `MAX_SECTION_STUDENTS` limit and the concept of roll numbers. 
+- **`struct AttendanceSummary`**: This is the custom digital report card we designed to temporarily hold attendance statistics for a single student in RAM. It perfectly packages `classes_held`, `present_count`, and `absent_count` into one neat bundle that our C functions can easily return and pass around.
+- **Function Prototypes**: It lists out all the public functions (like `mark_attendance_screen` and `get_student_attendance_summary`) so the main application (and our Python-C bridge) knows exactly how to interact with the attendance engine without needing to see the raw code inside `.c`.
+
+---
+
 ## 1. How We Store Multiple Days of Attendance
 
 Unlike a traditional database that uses complex tables, we track multiple days using a very simple **"Append"** strategy in a text file (`data/BSc_CS_A_attendance.txt`).
