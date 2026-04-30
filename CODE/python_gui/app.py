@@ -8,7 +8,11 @@ from tkinter import ttk
 # Folder paths used by the GUI and backend.
 python_gui_folder_path = os.path.abspath(os.path.dirname(__file__))
 c_core_folder_path = os.path.abspath(os.path.join(python_gui_folder_path, "..", "c_core"))
-backend_binary_full_path = os.path.join(python_gui_folder_path, "backend_app")
+
+if os.name == 'nt':
+    backend_binary_full_path = os.path.join(python_gui_folder_path, "backend_app.exe")
+else:
+    backend_binary_full_path = os.path.join(python_gui_folder_path, "backend_app")
 
 SUBJECTS = [
     "Mathematical foundation of computer science",
@@ -325,6 +329,7 @@ class AttendanceApp(tk.Tk):
             if str(r) == roll:
                 self.grades_name_label.config(text=name)
                 break
+        self.load_student_grades()
 
     def refresh_grades_student_list(self):
         values = [str(roll) for roll, name in self.student_rows]

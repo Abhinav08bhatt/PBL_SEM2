@@ -6,7 +6,10 @@ courses = ["BSc CS", "BSc IT", "BCA", "BCA (AIDS)"]
 sections = ["A", "B", "C"]
 exam_types = ["MID", "END"]
 
-backend_binary = os.path.abspath("backend_app")
+if os.name == 'nt':
+    backend_binary = os.path.abspath("backend_app.exe")
+else:
+    backend_binary = os.path.abspath("backend_app")
 
 for course in courses:
     for section in sections:
