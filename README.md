@@ -26,9 +26,9 @@ It features a dual-layered architecture: a C logic engine that safely manages na
 
 ## 🚀 Project Phases
 
-- [x] **Phase 1:** Core C Backend Architecture & File Isolation
-- [x] **Phase 2:** CLI system using C only files for logic
-- [] **Phase 3:** Python GUI Integration and extending C logic and features
+[x] **Phase 1:** Core C Backend Architecture & File Isolation
+[x] **Phase 2:** CLI system using C only files for logic
+[] **Phase 3:** Python GUI Integration and extending C logic and features
 
 ---
 
